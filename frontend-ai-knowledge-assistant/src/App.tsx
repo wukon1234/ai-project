@@ -28,9 +28,10 @@ import HistoryPage from './HistoryPage'
 import KnowledgeBrowse from './KnowledgeBrowse'
 import KnowledgeSearch from './KnowledgeSearch'
 import ProfilePage from './ProfilePage'
+import UsageStatsPage from './UsageStatsPage'
 import './App.css'
 
-type AppView = 'chat' | 'search' | 'browse' | 'history' | 'profile' | 'favorites' | 'help'
+type AppView = 'chat' | 'search' | 'browse' | 'history' | 'profile' | 'favorites' | 'help' | 'stats'
 
 type KnowledgeScopeId = 'all' | 'product' | 'hr' | 'tech' | 'support'
 
@@ -527,7 +528,20 @@ function App() {
         onOpenFavorites={() => setView('favorites')}
         onOpenHistory={() => setView('history')}
         onOpenHelp={() => setView('help')}
+        onOpenStats={() => setView('stats')}
         onLogout={logout}
+      />
+    )
+  }
+
+  if (view === 'stats') {
+    return (
+      <UsageStatsPage
+        onBack={() => setView('profile')}
+        onAskAgain={(question) => {
+          setChatSeed(question)
+          setView('chat')
+        }}
       />
     )
   }

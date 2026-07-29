@@ -28,6 +28,7 @@ type ProfilePageProps = {
   onOpenFavorites: () => void
   onOpenHistory: () => void
   onOpenHelp: () => void
+  onOpenStats: () => void
   onLogout: () => void
 }
 
@@ -36,6 +37,7 @@ function ProfilePage({
   onOpenFavorites,
   onOpenHistory,
   onOpenHelp,
+  onOpenStats,
   onLogout
 }: ProfilePageProps) {
   const { theme, setTheme } = useTheme()
@@ -181,7 +183,7 @@ function ProfilePage({
             <ChevronRight size={16} />
           </button>
 
-          <div className="pfMenuItem">
+          <button type="button" className="pfLinkRow" onClick={onOpenStats}>
             <div className="pfMenuLeft">
               <BarChart3 size={18} />
               <div>
@@ -189,7 +191,8 @@ function ProfilePage({
                 <div className="pfMenuDesc">本月提问 47 次，节省约 3.2 小时</div>
               </div>
             </div>
-          </div>
+            <ChevronRight size={16} />
+          </button>
 
           <button type="button" className="pfLinkRow" onClick={onOpenHelp}>
             <div className="pfMenuLeft">
