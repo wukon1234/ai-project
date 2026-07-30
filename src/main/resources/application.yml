@@ -3,29 +3,79 @@ server:
 
 spring:
   application:
-    name: rag-demo
+    name: kb-backend
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${KB_DB_URL:jdbc:mysql://127.0.0.1:3306/zhishiyun?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
+    username: ${KB_DB_USERNAME:root}
+    password: ${KB_DB_PASSWORD:root}
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
   servlet:
     multipart:
       enabled: true
       max-file-size: 50MB
       max-request-size: 100MB
+  redis:
+    host: ${KB_REDIS_HOST:127.0.0.1}
+    port: ${KB_REDIS_PORT:6379}
+    password: ${KB_REDIS_PASSWORD:}
+    database: ${KB_REDIS_DATABASE:0}
 
-ai:
-  openai:
-    api-key: ${OPENAI_API_KEY:your-api-key-here}
-    base-url: ${OPENAI_BASE-URL:https://api.openai.com}
-    model-chat: gpt-4o
-    model-embedding: text-embedding-3-small
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_id
 
-milvus:
-  host: ${MILVUS_HOST:localhost}
-  port: ${MILVUS_PORT:19530}
-  collection-name: knowledge_demo
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
 
-file:
-  upload-dir: ./uploads
+kb:
+  jwt:
+    issuer: zhishiyun-kb
+    secret: ${KB_JWT_SECRET:change-this-secret-change-this-secret}
+    access-token-minutes: ${KB_JWT_ACCESS_MINUTES:120}
+    refresh-token-days: ${KB_JWT_REFRESH_DAYS:7}
+    refresh-token-remember-days: ${KB_JWT_REFRESH_REMEMBER_DAYS:30}
+  security:
+    permit-all: false
+  internal:
+    api-key: ${KB_INTERNAL_API_KEY:internal-dev-key}
+  milvus:
+    host: ${KB_MILVUS_HOST:127.0.0.1}
+    port: ${KB_MILVUS_PORT:19530}
+    collection: ${KB_MILVUS_COLLECTION:kb_chunks}
+    dimension: ${KB_MILVUS_DIMENSION:1536}
+  embedding:
+    model: ${KB_EMBEDDING_MODEL:text-embedding-3-small}
+    endpoint: ${KB_EMBEDDING_ENDPOINT:https://api.openai.com/v1}
+    api-key: ${KB_EMBEDDING_API_KEY:}
+  llm:
+    model: ${KB_LLM_MODEL:gpt-4o-mini}
+    endpoint: ${KB_LLM_ENDPOINT:https://api.openai.com/v1}
+    api-key: ${KB_LLM_API_KEY:}
+  ocr:
+    endpoint: ${KB_OCR_ENDPOINT:}
+    api-key: ${KB_OCR_API_KEY:}
+  minio:
+    endpoint: ${KB_MINIO_ENDPOINT:http://127.0.0.1:9000}
+    access-key: ${KB_MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${KB_MINIO_SECRET_KEY:minioadmin}
+    bucket: ${KB_MINIO_BUCKET:kb-files}
+  rag:
+    score-threshold: ${KB_RAG_SCORE_THRESHOLD:0.45}
+    context-n: ${KB_RAG_CONTEXT_N:6}
 
-logging:
-  level:
-    dev.langchain4j: DEBUG
-    com.example.rag: DEBUG
+auth:
+  register:
+    auto-approve: ${KB_REGISTER_AUTO_APPROVE:true}
+    company-email-suffixes: ${KB_REGISTER_EMAIL_SUFFIXES:@company.com}
+
+

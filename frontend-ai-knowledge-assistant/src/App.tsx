@@ -29,6 +29,7 @@ import KnowledgeBrowse from './KnowledgeBrowse'
 import KnowledgeSearch from './KnowledgeSearch'
 import ProfilePage from './ProfilePage'
 import UsageStatsPage from './UsageStatsPage'
+import { clearTokens, logout as logoutApi, me } from './api'
 import './App.css'
 
 type AppView = 'chat' | 'search' | 'browse' | 'history' | 'profile' | 'favorites' | 'help' | 'stats'
@@ -445,22 +446,50 @@ function ChatPage({
 }
 
 function App() {
-  const [authed, setAuthed] = useState(() => localStorage.getItem('zn-authed') === '1')
+  const [authed, setAuthed] = useState(false)
+  const [booting, setBooting] = useState(true)
   const [view, setView] = useState<AppView>('chat')
   const [activeDoc, setActiveDoc] = useState<SourceDoc | null>(null)
   const [chatSeed, setChatSeed] = useState<string | undefined>(undefined)
 
   function loginSuccess() {
-    localStorage.setItem('zn-authed', '1')
     setAuthed(true)
     setView('chat')
   }
 
-  function logout() {
-    localStorage.removeItem('zn-authed')
+  async function logout() {
+    try {
+      await logoutApi()
+    } catch (_err) {
+      // ignore logout network errors in UI
+    }
+    clearTokens()
     setAuthed(false)
     setView('chat')
     setActiveDoc(null)
+  }
+
+  useEffect(() => {
+    let alive = true
+    async function bootstrap() {
+      try {
+        await me()
+        if (alive) setAuthed(true)
+      } catch (_err) {
+        clearTokens()
+        if (alive) setAuthed(false)
+      } finally {
+        if (alive) setBooting(false)
+      }
+    }
+    bootstrap()
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  if (booting) {
+    return <div style={{ padding: 24 }}>加载中...</div>
   }
 
   if (!authed) {

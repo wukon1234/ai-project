@@ -13,6 +13,7 @@ import {
   Smartphone,
   UserRound,
 } from 'lucide-react'
+import { login, register, saveTokens } from './api'
 
 type AuthMode = 'login' | 'register'
 type LoginTab = 'email' | 'phone'
@@ -104,10 +105,12 @@ function AuthPage({ onSuccess }: AuthPageProps) {
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
   const copy = t[lang]
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault()
+    if (submitting) return
     if (mode === 'login') {
       if (!account.trim()) {
         setError(loginTab === 'phone' ? copy.errPhone : copy.errEmail)
@@ -122,7 +125,29 @@ function AuthPage({ onSuccess }: AuthPageProps) {
       return
     }
     setError(null)
-    onSuccess()
+    setSubmitting(true)
+    try {
+      if (mode === 'login') {
+        const resp = await login({
+          account: account.trim(),
+          password: password.trim(),
+          rememberMe,
+        })
+        saveTokens(resp.accessToken, resp.refreshToken)
+      } else {
+        const resp = await register({
+          name: name.trim(),
+          email: account.trim(),
+          password: password.trim(),
+        })
+        saveTokens(resp.accessToken, resp.refreshToken)
+      }
+      onSuccess()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '请求失败')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -310,7 +335,11 @@ function AuthPage({ onSuccess }: AuthPageProps) {
 
           {mode === 'login' ? (
             <>
-              <button type="button" className="authSsoBtn" onClick={onSuccess}>
+              <button
+                type="button"
+                className="authSsoBtn"
+                onClick={() => setError('SSO 暂未接入，请使用账号密码登录')}
+              >
                 <span className="authMsLogo" aria-hidden="true">
                   <i />
                   <i />
@@ -430,8 +459,8 @@ function AuthPage({ onSuccess }: AuthPageProps) {
 
             {error ? <div className="authError">{error}</div> : null}
 
-            <button type="submit" className="authSubmit">
-              {mode === 'login' ? copy.submitLogin : copy.submitRegister}
+            <button type="submit" className="authSubmit" disabled={submitting}>
+              {submitting ? '提交中...' : mode === 'login' ? copy.submitLogin : copy.submitRegister}
             </button>
           </form>
 
