@@ -9,6 +9,7 @@ import com.zhishiyun.kb.infra.mysql.entity.ChatSessionEntity;
 import com.zhishiyun.kb.infra.mysql.mapper.ChatCitationMapper;
 import com.zhishiyun.kb.infra.mysql.mapper.ChatMessageMapper;
 import com.zhishiyun.kb.infra.mysql.mapper.ChatSessionMapper;
+import com.zhishiyun.kb.profile.ProfileService;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -25,12 +26,18 @@ public class ChatSessionService {
     private final ChatSessionMapper chatSessionMapper;
     private final ChatMessageMapper chatMessageMapper;
     private final ChatCitationMapper chatCitationMapper;
+    private final ProfileService profileService;
 
     @Transactional
     public ChatSessionEntity create(Long userId, String scope) {
         ChatSessionEntity session = new ChatSessionEntity();
         session.setUserId(userId);
-        session.setScope((scope == null || scope.trim().isEmpty()) ? "hr" : scope);
+        if (scope == null || scope.trim().isEmpty()) {
+            List<String> defaults = profileService.defaultScopes(userId);
+            session.setScope(defaults.isEmpty() ? "hr" : String.join(",", defaults));
+        } else {
+            session.setScope(scope);
+        }
         session.setTitle("新对话");
         session.setMessageCount(0);
         session.setDeleted(0);
@@ -44,7 +51,8 @@ public class ChatSessionService {
                 .eq(ChatSessionEntity::getDeleted, 0)
                 .orderByDesc(ChatSessionEntity::getUpdatedAt);
         if (keyword != null && !keyword.trim().isEmpty()) {
-            wrapper.like(ChatSessionEntity::getTitle, keyword.trim());
+            wrapper.and(w -> w.like(ChatSessionEntity::getTitle, keyword.trim())
+                    .or().like(ChatSessionEntity::getLastQuestion, keyword.trim()));
         }
         return chatSessionMapper.selectList(wrapper);
     }

@@ -1,0 +1,93 @@
+package com.zhishiyun.kb.browse;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zhishiyun.kb.common.BizException;
+import com.zhishiyun.kb.common.ErrorCode;
+import com.zhishiyun.kb.infra.mysql.entity.KbAclEntity;
+import com.zhishiyun.kb.infra.mysql.entity.KbDocumentEntity;
+import com.zhishiyun.kb.infra.mysql.entity.KbLibraryEntity;
+import com.zhishiyun.kb.infra.mysql.mapper.KbAclMapper;
+import com.zhishiyun.kb.infra.mysql.mapper.KbDocumentMapper;
+import com.zhishiyun.kb.infra.mysql.mapper.KbLibraryMapper;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+@Service
+@RequiredArgsConstructor
+public class BrowseService {
+
+    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private final KbAclMapper kbAclMapper;
+    private final KbLibraryMapper kbLibraryMapper;
+    private final KbDocumentMapper kbDocumentMapper;
+
+    public List<Map<String, Object>> libraries(Long userId) {
+        List<String> scopes = kbAclMapper.selectList(new LambdaQueryWrapper<KbAclEntity>().eq(KbAclEntity::getUserId, userId))
+                .stream().map(KbAclEntity::getLibraryCode).distinct().collect(Collectors.toList());
+        if (scopes.isEmpty()) return new ArrayList<Map<String, Object>>();
+        List<KbLibraryEntity> libraries = kbLibraryMapper.selectList(new LambdaQueryWrapper<KbLibraryEntity>()
+                .in(KbLibraryEntity::getCode, scopes));
+        List<Map<String, Object>> res = new ArrayList<Map<String, Object>>();
+        for (KbLibraryEntity lib : libraries) {
+            Map<String, Object> m = new HashMap<String, Object>();
+            m.put("code", lib.getCode());
+            m.put("name", lib.getName());
+            m.put("description", lib.getDescription());
+            m.put("docCount", kbDocumentMapper.selectCount(new LambdaQueryWrapper<KbDocumentEntity>()
+                    .eq(KbDocumentEntity::getLibraryCode, lib.getCode())));
+            m.put("tags", lib.getTags());
+            m.put("updatedAt", lib.getUpdatedAt() == null ? null : lib.getUpdatedAt().format(FMT));
+            res.add(m);
+        }
+        return res;
+    }
+
+    public Map<String, Object> libraryDocs(Long userId, String code, String category, String q, int page, int size) {
+        List<String> scopes = kbAclMapper.selectList(new LambdaQueryWrapper<KbAclEntity>().eq(KbAclEntity::getUserId, userId))
+                .stream().map(KbAclEntity::getLibraryCode).distinct().collect(Collectors.toList());
+        if (!scopes.contains(code)) {
+            throw new BizException(ErrorCode.FORBIDDEN_LIBRARY);
+        }
+        List<KbDocumentEntity> docs = kbDocumentMapper.selectList(new LambdaQueryWrapper<KbDocumentEntity>()
+                .eq(KbDocumentEntity::getLibraryCode, code)
+                .orderByDesc(KbDocumentEntity::getUpdatedAt));
+        List<KbDocumentEntity> filtered = docs.stream().filter(d -> {
+            boolean catOk = "all".equals(category) || category.equals(d.getCategory());
+            boolean qOk = !StringUtils.hasText(q)
+                    || (d.getTitle() != null && d.getTitle().toLowerCase().contains(q.toLowerCase()))
+                    || (d.getSummary() != null && d.getSummary().toLowerCase().contains(q.toLowerCase()));
+            return catOk && qOk;
+        }).collect(Collectors.toList());
+        int from = Math.max(0, (page - 1) * size);
+        int to = Math.min(filtered.size(), from + size);
+        List<Map<String, Object>> list = new ArrayList<Map<String, Object>>();
+        if (from < to) {
+            for (KbDocumentEntity d : filtered.subList(from, to)) {
+                Map<String, Object> m = new HashMap<String, Object>();
+                m.put("id", d.getId());
+                m.put("libraryId", d.getLibraryId());
+                m.put("title", d.getTitle());
+                m.put("category", d.getCategory());
+                m.put("pages", d.getPages());
+                m.put("updatedAt", d.getUpdatedAt() == null ? null : d.getUpdatedAt().format(FMT));
+                m.put("views", d.getViewCount());
+                m.put("page", 1);
+                m.put("summary", d.getSummary());
+                list.add(m);
+            }
+        }
+        Map<String, Object> data = new HashMap<String, Object>();
+        data.put("page", page);
+        data.put("size", size);
+        data.put("total", filtered.size());
+        data.put("list", list);
+        return data;
+    }
+}
