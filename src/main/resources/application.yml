@@ -38,6 +38,8 @@ management:
         include: health,info
 
 kb:
+  storage:
+    local-dir: ${KB_STORAGE_LOCAL_DIR:data/storage}
   jwt:
     issuer: zhishiyun-kb
     secret: ${KB_JWT_SECRET:change-this-secret-change-this-secret}
