@@ -91,7 +91,10 @@ public class SearchService {
             }
         }
         if (StringUtils.hasText(q)) {
-            redisTemplate.opsForZSet().incrementScore("search:hot", q, 1D);
+            try {
+                redisTemplate.opsForZSet().incrementScore("search:hot", q, 1D);
+            } catch (Exception ignored) {
+            }
             UsageEventEntity usage = new UsageEventEntity();
             usage.setUserId(userId);
             usage.setEventType("SEARCH");
@@ -105,14 +108,18 @@ public class SearchService {
 
     /** 热搜词：优先 Redis，否则返回内置种子词。 */
     public List<String> hotWords() {
-        java.util.Set<org.springframework.data.redis.core.ZSetOperations.TypedTuple<String>> tuples =
-                redisTemplate.opsForZSet().reverseRangeWithScores("search:hot", 0, 9);
-        if (tuples == null || tuples.isEmpty()) {
+        try {
+            java.util.Set<org.springframework.data.redis.core.ZSetOperations.TypedTuple<String>> tuples =
+                    redisTemplate.opsForZSet().reverseRangeWithScores("search:hot", 0, 9);
+            if (tuples == null || tuples.isEmpty()) {
+                return HOT_SEEDS;
+            }
+            List<String> result = tuples.stream().map(org.springframework.data.redis.core.ZSetOperations.TypedTuple::getValue)
+                    .filter(StringUtils::hasText).collect(Collectors.toList());
+            return result.isEmpty() ? HOT_SEEDS : result;
+        } catch (Exception ex) {
             return HOT_SEEDS;
         }
-        List<String> result = tuples.stream().map(org.springframework.data.redis.core.ZSetOperations.TypedTuple::getValue)
-                .filter(StringUtils::hasText).collect(Collectors.toList());
-        return result.isEmpty() ? HOT_SEEDS : result;
     }
 
     private Comparator<SearchRow> buildComparator(String sort, String q) {

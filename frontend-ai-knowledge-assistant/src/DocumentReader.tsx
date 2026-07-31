@@ -12,6 +12,14 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
+import {
+  downloadDocument,
+  fetchDocumentBlobUrl,
+  getDocumentMeta,
+  shareDocument,
+  viewDocument,
+  type DocumentMeta,
+} from './api'
 
 export type SourceDoc = {
   id: string
@@ -22,36 +30,7 @@ export type SourceDoc = {
 }
 
 type ContextTab = 'summary' | 'related' | 'ask'
-
 type ZoomMode = 'fit' | '100' | 'zoom'
-
-const relatedSnippets = [
-  {
-    id: 'r1',
-    page: 22,
-    title: '休假申请流程',
-    text: '员工应提前至少 3 个工作日在 OA 提交休假申请，经直属主管审批后生效。'
-  },
-  {
-    id: 'r2',
-    page: 23,
-    title: '年假天数对照表',
-    text: '入职满 1 年不满 10 年：年休假 5 天；满 10 年不满 20 年：年休假 10 天。',
-    active: true
-  },
-  {
-    id: 'r3',
-    page: 24,
-    title: '未休年假处理',
-    text: '当年未使用完的年假，原则上不结转至下一年度；特殊情况需经 HR 备案。'
-  },
-  {
-    id: 'r4',
-    page: 31,
-    title: '病假与事假说明',
-    text: '病假需提供医疗机构证明；事假不计薪，累计超过规定天数将影响考勤评定。'
-  }
-]
 
 type DocumentReaderProps = {
   doc: SourceDoc
@@ -66,26 +45,89 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
   const [askText, setAskText] = useState('')
   const [askHint, setAskHint] = useState<string | null>(null)
   const [mobileAskOpen, setMobileAskOpen] = useState(false)
+  const [meta, setMeta] = useState<DocumentMeta | null>(null)
+  const [fileUrl, setFileUrl] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const highlightRef = useRef<HTMLDivElement | null>(null)
+
+  const totalPages = meta?.pages || 86
+  const title = meta?.title || doc.title
+  const knowledgeBase = meta?.knowledgeBase || doc.knowledgeBase
 
   useEffect(() => {
     setPage(doc.page)
-  }, [doc.page])
+  }, [doc.page, doc.id])
 
   useEffect(() => {
-    if (page !== 23) return
+    let revoked: string | null = null
+    let alive = true
+    ;(async () => {
+      setLoadError(null)
+      setFileUrl(null)
+      try {
+        const m = await getDocumentMeta(doc.id)
+        if (!alive) return
+        setMeta(m)
+        setBookmarked(Boolean(m.favorited))
+        await viewDocument(doc.id, { pageNo: doc.page, eventType: 'OPEN_SOURCE' })
+        try {
+          const url = await fetchDocumentBlobUrl(doc.id)
+          if (!alive) {
+            URL.revokeObjectURL(url)
+            return
+          }
+          revoked = url
+          setFileUrl(url)
+        } catch {
+          // 无文件时保留文本预览兜底
+        }
+      } catch (err) {
+        if (alive) setLoadError(err instanceof Error ? err.message : '加载文档失败')
+      }
+    })()
+    return () => {
+      alive = false
+      if (revoked) URL.revokeObjectURL(revoked)
+    }
+  }, [doc.id, doc.page])
+
+  useEffect(() => {
+    if (!doc.excerpt) return
     const timer = window.setTimeout(() => {
       highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 80)
     return () => window.clearTimeout(timer)
-  }, [page, zoom])
+  }, [page, zoom, doc.excerpt])
 
   function onAskSubmit(e: FormEvent) {
     e.preventDefault()
     if (!askText.trim()) return
-    setAskHint(`已针对「${doc.title}」发起提问（mock）`)
+    setAskHint(`同文档问答将在后续批次接入：${askText.trim()}`)
     setAskText('')
     setMobileAskOpen(false)
+  }
+
+  async function onShare() {
+    try {
+      const data = await shareDocument(doc.id)
+      if (data.shareUrl && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(data.shareUrl)
+        setAskHint(`分享链接已复制（${data.expireHours}h 有效）`)
+      } else {
+        setAskHint(data.shareUrl || '已生成分享链接')
+      }
+    } catch (err) {
+      setAskHint(err instanceof Error ? err.message : '分享失败')
+    }
+  }
+
+  async function onDownload() {
+    try {
+      await downloadDocument(doc.id, `${title}.pdf`)
+      setAskHint('开始下载文档')
+    } catch (err) {
+      setAskHint(err instanceof Error ? err.message : '下载失败')
+    }
   }
 
   const zoomLabel = zoom === 'fit' ? '适合宽度' : zoom === '100' ? '100%' : '放大'
@@ -100,8 +142,9 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
           </button>
 
           <div className="docTitleBlock">
-            <h1 className="docTitle">{doc.title}</h1>
-            <span className="docKbTag">{doc.knowledgeBase}</span>
+            <h1 className="docTitle">{title}</h1>
+            <span className="docKbTag">{knowledgeBase}</span>
+            {meta?.views != null ? <span className="docKbTag">浏览 {meta.views}</span> : null}
           </div>
         </div>
 
@@ -114,24 +157,22 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
             <Bookmark size={16} />
             <span>收藏</span>
           </button>
-          <button
-            type="button"
-            className="docActionBtn"
-            onClick={() => setAskHint('分享链接已复制（mock）')}
-          >
+          <button type="button" className="docActionBtn" onClick={onShare}>
             <Share2 size={16} />
             <span>分享</span>
           </button>
-          <button
-            type="button"
-            className="docActionBtn"
-            onClick={() => setAskHint('开始下载文档（mock）')}
-          >
+          <button type="button" className="docActionBtn" onClick={onDownload}>
             <Download size={16} />
             <span>下载</span>
           </button>
         </div>
       </header>
+
+      {loadError ? (
+        <div className="docToast" role="alert">
+          {loadError}
+        </div>
+      ) : null}
 
       <div className="docBody">
         <section className="docReaderPane" aria-label="文档阅读器">
@@ -167,55 +208,29 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
           </div>
 
           <div className={`docCanvasWrap docZoom-${zoom}`}>
-            <article className="docPaper" aria-label={`第 ${page} 页`}>
-              <div className="docPaperHeader">
-                <span>企业内网文档 · PDF 预览</span>
-                <span>第 {page} 页 / 共 86 页</span>
-              </div>
-
-              {page === 23 ? (
-                <>
-                  <h2 className="docPaperH2">第四章 · 休假制度</h2>
-                  <h3 className="docPaperH3">4.2 带薪年休假</h3>
-                  <p className="docPaperP">
-                    公司依据国家相关法律法规，结合员工工龄情况，提供带薪年休假。年假天数按以下标准执行：
+            {fileUrl ? (
+              <iframe
+                title={title}
+                src={`${fileUrl}#page=${page}`}
+                style={{ width: '100%', height: '70vh', border: 'none', background: '#fff' }}
+              />
+            ) : (
+              <article className="docPaper" aria-label={`第 ${page} 页`}>
+                <div className="docPaperHeader">
+                  <span>企业内网文档 · 文本预览</span>
+                  <span>
+                    第 {page} 页 / 共 {totalPages} 页
+                  </span>
+                </div>
+                <h2 className="docPaperH2">{title}</h2>
+                <div ref={highlightRef} className="docHighlightBlock">
+                  <p>
+                    <mark>{doc.excerpt || meta?.summary || '暂无摘录，可下载 PDF 查看原文。'}</mark>
                   </p>
-
-                  <div ref={highlightRef} className="docHighlightBlock">
-                    <p>
-                      <mark>
-                        员工年假规定：入职满1年不满10年，年休假5天；入职满10年不满20年，年休假10天；入职不满1年，不享受带薪年假。
-                      </mark>
-                    </p>
-                    <p className="docHighlightNote">来自问答引用 · 自动定位到本段</p>
-                  </div>
-
-                  <p className="docPaperP">
-                    符合年假条件的员工，可在 OA 系统提交年假申请，由直属主管审批后生效。审批通过后，员工应在休假前完成工作交接。
-                  </p>
-                  <p className="docPaperP">
-                    HR 将于每年初同步当年可休年假余额；如遇法定节假日与年假重叠，不重复计算休假天数。
-                  </p>
-                </>
-              ) : (
-                <>
-                  <h2 className="docPaperH2">第四章 · 休假制度</h2>
-                  <h3 className="docPaperH3">
-                    {page === 22 ? '4.1 休假总则' : page === 24 ? '4.3 年假结转说明' : `第 ${page} 页内容`}
-                  </h3>
-                  <p className="docPaperP">
-                    {page === 22
-                      ? '本章规定适用于公司全体正式员工。休假申请应提前提交，并确保不影响所在团队关键业务连续性。'
-                      : page === 24
-                        ? '当年未使用完的年假，原则上不结转至下一年度；特殊情况需经 HR 备案，并在下一年度第一季度内使用完毕。'
-                        : '此处为文档预览占位内容。从问答跳转时会自动定位到来源页并高亮关键段落。'}
-                  </p>
-                  <p className="docPaperP">
-                    点击右侧「相关片段」可在同文档内快速跳转；也可使用「同文档问答」仅针对本文档继续追问。
-                  </p>
-                </>
-              )}
-            </article>
+                  <p className="docHighlightNote">来自问答引用 · 第 {page} 页</p>
+                </div>
+              </article>
+            )}
           </div>
 
           <div className="docPager">
@@ -232,10 +247,10 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
             <button
               type="button"
               className="docPagerBtn"
-              disabled={page >= 86}
-              onClick={() => setPage((p) => Math.min(86, p + 1))}
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             >
-              <span>{page + 1 <= 86 ? page + 1 : '—'}</span>
+              <span>{page + 1 <= totalPages ? page + 1 : '—'}</span>
               <ChevronRight size={16} />
             </button>
           </div>
@@ -247,7 +262,7 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
               [
                 { id: 'summary', label: 'AI 摘要' },
                 { id: 'related', label: '相关片段' },
-                { id: 'ask', label: '同文档问答' }
+                { id: 'ask', label: '同文档问答' },
               ] as const
             ).map((item) => (
               <button
@@ -268,33 +283,25 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
               <div className="docSummaryCard">
                 <div className="docSummaryHead">
                   <span className="docAiOrb" aria-hidden="true" />
-                  <span>本段内容概述</span>
+                  <span>文档摘要</span>
                 </div>
-                <p>
-                  说明员工年假天数与工龄的对应关系：入职满 1 年不满 10 年可休 5
-                  天，满 10 年不满 20 年可休 10 天；入职不满 1
-                  年暂不享受带薪年假。符合条件者可在 OA 提交申请。
-                </p>
-                <div className="docSummaryMeta">基于第 {page} 页 · 人事制度库</div>
+                <p>{meta?.summary || doc.excerpt || '摘要将在入库完成后展示；页级 AI 摘要见后续批次。'}</p>
+                <div className="docSummaryMeta">
+                  基于第 {page} 页 · {knowledgeBase}
+                </div>
               </div>
             ) : null}
 
             {tab === 'related' ? (
               <div className="docRelatedList">
-                {relatedSnippets.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`docRelatedItem ${item.active && page === 23 ? 'docRelatedItemActive' : ''}`}
-                    onClick={() => setPage(item.page)}
-                  >
-                    <div className="docRelatedTop">
-                      <span className="docRelatedTitle">{item.title}</span>
-                      <span className="docRelatedPage">第 {item.page} 页</span>
-                    </div>
-                    <p>{item.text}</p>
-                  </button>
-                ))}
+                <p className="docAskHint">相关片段接口将在 B10 接通，当前展示引用来源摘录。</p>
+                <button type="button" className="docRelatedItem docRelatedItemActive">
+                  <div className="docRelatedTop">
+                    <span className="docRelatedTitle">{title}</span>
+                    <span className="docRelatedPage">第 {page} 页</span>
+                  </div>
+                  <p>{doc.excerpt}</p>
+                </button>
               </div>
             ) : null}
 
@@ -302,7 +309,7 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
               <div className="docAskPanel">
                 <div className="docAskIntro">
                   <Sparkles size={16} />
-                  <span>仅检索本文档内容，回答更聚焦</span>
+                  <span>仅检索本文档内容（B10）</span>
                 </div>
                 <form className="docAskForm" onSubmit={onAskSubmit}>
                   <textarea

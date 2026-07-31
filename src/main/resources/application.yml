@@ -22,6 +22,7 @@ spring:
     port: ${KB_REDIS_PORT:6379}
     password: ${KB_REDIS_PASSWORD:}
     database: ${KB_REDIS_DATABASE:0}
+    timeout: 200ms
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
@@ -32,6 +33,9 @@ mybatis-plus:
       id-type: assign_id
 
 management:
+  health:
+    redis:
+      enabled: false
   endpoints:
     web:
       exposure:
@@ -75,7 +79,7 @@ kb:
     secret-key: ${KB_MINIO_SECRET_KEY:minioadmin}
     bucket: ${KB_MINIO_BUCKET:kb-files}
   rag:
-    score-threshold: ${KB_RAG_SCORE_THRESHOLD:0.45}
+    score-threshold: ${KB_RAG_SCORE_THRESHOLD:0.15}
     context-n: ${KB_RAG_CONTEXT_N:6}
     hybrid-enabled: ${KB_RAG_HYBRID_ENABLED:false}
   vision:
@@ -92,7 +96,8 @@ kb:
     blocked-libraries: ${KB_SHARE_BLOCKED_LIBRARIES:}
     require-login: ${KB_SHARE_REQUIRE_LOGIN:false}
   rate-limit:
-    enabled: ${KB_RATE_LIMIT_ENABLED:true}
+    # 无 Redis 时可先关；有 Redis 再开
+    enabled: ${KB_RATE_LIMIT_ENABLED:false}
     ask-per-minute: ${KB_RATE_LIMIT_ASK_PER_MINUTE:10}
   sso:
     enabled: ${KB_SSO_ENABLED:false}

@@ -140,7 +140,10 @@ public class IngestService {
             document.setSummary(pages.isEmpty() ? "" : truncate(pages.get(0).getText(), 200));
             document.setStatus(DocStatus.READY.name());
             kbDocumentMapper.updateById(document);
-            redisTemplate.delete("doc:meta:" + docId);
+            try {
+                redisTemplate.delete("doc:meta:" + docId);
+            } catch (Exception ignored) {
+            }
             updateTask(task, "SUCCESS", 100, null);
         } catch (Exception e) {
             log.error("parse failed, doc={}", docId, e);

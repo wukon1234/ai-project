@@ -1,7 +1,6 @@
 package com.zhishiyun.kb.document;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zhishiyun.kb.common.BizException;
 import com.zhishiyun.kb.common.ErrorCode;
@@ -38,6 +37,8 @@ public class DocumentService {
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String CACHE_PREFIX = "doc:meta:";
     private static final String DOC_SHARE_PREFIX = "share:doc:";
+    /** Redis 不可用时的进程内分享 token 兜底 */
+    private static final Map<String, String> LOCAL_SHARE_STORE = new java.util.concurrent.ConcurrentHashMap<String, String>();
 
     private final KbDocumentMapper kbDocumentMapper;
     private final KbLibraryMapper kbLibraryMapper;
@@ -87,7 +88,7 @@ public class DocumentService {
                 .build();
         try {
             redisTemplate.opsForValue().set(key, objectMapper.writeValueAsString(response), java.time.Duration.ofMinutes(30));
-        } catch (JsonProcessingException ignored) {
+        } catch (Exception ignored) {
         }
         return response;
     }
@@ -111,7 +112,10 @@ public class DocumentService {
         int next = (doc.getViewCount() == null ? 0 : doc.getViewCount()) + 1;
         doc.setViewCount(next);
         kbDocumentMapper.updateById(doc);
-        redisTemplate.delete(CACHE_PREFIX + docId);
+        try {
+            redisTemplate.delete(CACHE_PREFIX + docId);
+        } catch (Exception ignored) {
+        }
         String type = "READ_COMPLETE".equalsIgnoreCase(eventType) ? "READ_COMPLETE" : "OPEN_SOURCE";
         StringBuilder extra = new StringBuilder("{");
         if (pageNo != null) {
@@ -147,7 +151,11 @@ public class DocumentService {
         }
         String token = UUID.randomUUID().toString().replace("-", "");
         String payload = "{\"docId\":" + docId + ",\"userId\":" + userId + "}";
-        redisTemplate.opsForValue().set(DOC_SHARE_PREFIX + token, payload, java.time.Duration.ofHours(shareExpireHours));
+        try {
+            redisTemplate.opsForValue().set(DOC_SHARE_PREFIX + token, payload, java.time.Duration.ofHours(shareExpireHours));
+        } catch (Exception ex) {
+            LOCAL_SHARE_STORE.put(token, payload);
+        }
         writeAudit(userId, "SHARE_DOC", "document", String.valueOf(docId));
         Map<String, Object> data = new HashMap<String, Object>();
         data.put("shareToken", token);
@@ -158,7 +166,14 @@ public class DocumentService {
 
     /** 只读解析文档分享 token。 */
     public Long resolveSharedDocId(String token) {
-        String payload = redisTemplate.opsForValue().get(DOC_SHARE_PREFIX + token);
+        String payload = null;
+        try {
+            payload = redisTemplate.opsForValue().get(DOC_SHARE_PREFIX + token);
+        } catch (Exception ignored) {
+        }
+        if (payload == null || payload.isEmpty()) {
+            payload = LOCAL_SHARE_STORE.get(token);
+        }
         if (payload == null || payload.isEmpty()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "分享链接无效或已过期");
         }
