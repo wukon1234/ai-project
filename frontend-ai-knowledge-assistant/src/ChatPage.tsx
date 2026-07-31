@@ -356,33 +356,45 @@ function ChatPage({
   }
 
   async function onClear() {
-    if (!sessionId) return
+    if (!sessionId) {
+      setLastActionHint('请先创建或选择一个会话')
+      return
+    }
     try {
       await clearSession(sessionId)
       setUserQuestion(null)
       setAnswerText('')
       setCitations([])
       setDoneInfo(null)
+      setAssistantMessageId(null)
+      setLastUserMessageId(null)
       await refreshSessions(sessionId)
       setLastActionHint('已清空当前对话')
     } catch (err) {
-      setLastActionHint(err instanceof Error ? err.message : '清空失败')
+      setLastActionHint(friendlyError(err, '清空失败，请稍后重试'))
     }
   }
 
   async function onShare() {
-    if (!sessionId) return
+    if (!sessionId) {
+      setLastActionHint('请先创建或选择一个会话')
+      return
+    }
     try {
       const data = await shareSession(sessionId)
       const url = typeof data === 'string' ? data : data.shareUrl || data.shareToken || ''
       if (url && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url)
-        setLastActionHint('分享链接已复制')
+        try {
+          await navigator.clipboard.writeText(url)
+          setLastActionHint('分享链接已复制')
+        } catch {
+          setLastActionHint(url)
+        }
       } else {
         setLastActionHint(url || '已生成分享链接')
       }
     } catch (err) {
-      setLastActionHint(err instanceof Error ? err.message : '分享失败')
+      setLastActionHint(friendlyError(err, '分享失败，请稍后重试'))
     }
   }
 
