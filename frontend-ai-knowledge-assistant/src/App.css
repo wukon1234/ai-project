@@ -4665,3 +4665,243 @@ html[data-theme='dark'] .usAchieveIcon {
   background: #1f2937;
 }
 
+.docAskAnswer {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.06);
+  white-space: pre-wrap;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.usTrendList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.usTrendList li {
+  display: grid;
+  grid-template-columns: 52px 1fr 28px;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.usTrendBarTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.usTrendBarFill {
+  height: 100%;
+  background: #2563eb;
+}
+
+.usCustomRange {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.usCustomRange input {
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: var(--card);
+  color: var(--text);
+}
+
+.authForgotPanel {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--divider, #e5e7eb);
+  background: var(--card, #fff);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.authForgotPanel input {
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.sharePage {
+  min-height: 100vh;
+  padding: 24px;
+  background: var(--bg, #f8fafc);
+  color: var(--text, #0f172a);
+}
+
+.shareHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.shareClose {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.shareMeta {
+  color: #64748b;
+  margin: 8px 0 16px;
+}
+
+.shareMessages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shareMsg {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+}
+
+.shareMsg-user {
+  background: #eff6ff;
+}
+
+.shareError {
+  color: #b42318;
+}
+
+.docAskAnswer {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.06);
+  white-space: pre-wrap;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.usTrendList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.usTrendList li {
+  display: grid;
+  grid-template-columns: 52px 1fr 28px;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.usTrendBarTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.usTrendBarFill {
+  height: 100%;
+  background: #2563eb;
+}
+
+.usCustomRange {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.usCustomRange input {
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: var(--card);
+  color: var(--text);
+}
+
+.authForgotPanel {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--divider, #e5e7eb);
+  background: var(--card, #fff);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.authForgotPanel input {
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.sharePage {
+  min-height: 100vh;
+  padding: 24px;
+  background: var(--bg, #f8fafc);
+  color: var(--text, #0f172a);
+}
+
+.shareHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.shareClose {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.shareMeta {
+  color: #64748b;
+  margin: 8px 0 16px;
+}
+
+.shareMessages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shareMsg {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+}
+
+.shareMsg-user {
+  background: #eff6ff;
+}
+
+.shareError {
+  color: #b42318;
+}
+

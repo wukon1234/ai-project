@@ -36,7 +36,7 @@ public class ShareService {
     private final KbDocumentMapper kbDocumentMapper;
     private final AuditLogMapper auditLogMapper;
 
-    @Value("${kb.share.base-url:http://localhost:8080}")
+    @Value("${kb.share.base-url:http://localhost:5173}")
     private String shareBaseUrl;
     @Value("${kb.share.require-login:false}")
     private boolean requireLogin;
@@ -51,7 +51,7 @@ public class ShareService {
         writeAudit(userId, "SHARE_SESSION", "session", String.valueOf(sessionId));
         Map<String, Object> data = new LinkedHashMap<String, Object>();
         data.put("shareToken", token);
-        data.put("shareUrl", shareBaseUrl + "/api/v1/share/sessions/" + token);
+        data.put("shareUrl", trimSlash(shareBaseUrl) + "/?view=share-session&token=" + token);
         return data;
     }
 
@@ -108,5 +108,12 @@ public class ShareService {
         log.setTargetId(targetId);
         log.setDetail(action);
         auditLogMapper.insert(log);
+    }
+
+    private String trimSlash(String url) {
+        if (url == null || url.isEmpty()) {
+            return "http://localhost:5173";
+        }
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 }

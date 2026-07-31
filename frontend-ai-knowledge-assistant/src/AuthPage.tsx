@@ -13,7 +13,7 @@ import {
   Smartphone,
   UserRound,
 } from 'lucide-react'
-import { login, register, saveTokens } from './api'
+import { login, register, saveTokens, forgotPassword, resetPassword, ssoAuthorizeUrl } from './api'
 
 type AuthMode = 'login' | 'register'
 type LoginTab = 'email' | 'phone'
@@ -106,7 +106,46 @@ function AuthPage({ onSuccess }: AuthPageProps) {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [forgotOpen, setForgotOpen] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [resetToken, setResetToken] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [forgotHint, setForgotHint] = useState<string | null>(null)
   const copy = t[lang]
+
+  function onSso() {
+    window.location.href = ssoAuthorizeUrl()
+  }
+
+  async function onForgotSubmit() {
+    if (!forgotEmail.trim()) {
+      setForgotHint('请输入企业邮箱')
+      return
+    }
+    try {
+      const data = await forgotPassword(forgotEmail.trim())
+      if (data.devResetToken) setResetToken(data.devResetToken)
+      setForgotHint('若邮箱存在，重置令牌已生成（开发环境可直接填入下方令牌）')
+    } catch (err) {
+      setForgotHint(err instanceof Error ? err.message : '请求失败')
+    }
+  }
+
+  async function onResetSubmit() {
+    if (!resetToken.trim() || !newPassword.trim()) {
+      setForgotHint('请填写重置令牌与新密码')
+      return
+    }
+    try {
+      await resetPassword(resetToken.trim(), newPassword.trim())
+      setForgotHint('密码已重置，请返回登录')
+      setForgotOpen(false)
+      setMode('login')
+      setError(null)
+    } catch (err) {
+      setForgotHint(err instanceof Error ? err.message : '重置失败')
+    }
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -335,11 +374,7 @@ function AuthPage({ onSuccess }: AuthPageProps) {
 
           {mode === 'login' ? (
             <>
-              <button
-                type="button"
-                className="authSsoBtn"
-                onClick={() => setError('SSO 暂未接入，请使用账号密码登录')}
-              >
+              <button type="button" className="authSsoBtn" onClick={onSso}>
                 <span className="authMsLogo" aria-hidden="true">
                   <i />
                   <i />
@@ -451,7 +486,15 @@ function AuthPage({ onSuccess }: AuthPageProps) {
                   />
                   {copy.remember}
                 </label>
-                <button type="button" className="authLinkBtn">
+                <button
+                  type="button"
+                  className="authLinkBtn"
+                  onClick={() => {
+                    setForgotOpen(true)
+                    setForgotEmail(account.includes('@') ? account : '')
+                    setForgotHint(null)
+                  }}
+                >
                   {copy.forgot}
                 </button>
               </div>
@@ -468,6 +511,38 @@ function AuthPage({ onSuccess }: AuthPageProps) {
             <span>{copy.copyright}</span>
           </div>
         </div>
+
+        {forgotOpen ? (
+          <div className="authForgotPanel" role="dialog" aria-label="忘记密码">
+            <h3>重置密码</h3>
+            <input
+              value={forgotEmail}
+              onChange={(e) => setForgotEmail(e.target.value)}
+              placeholder="企业邮箱"
+            />
+            <button type="button" className="authSubmit" onClick={onForgotSubmit}>
+              发送重置令牌
+            </button>
+            <input
+              value={resetToken}
+              onChange={(e) => setResetToken(e.target.value)}
+              placeholder="重置令牌（开发环境从接口返回）"
+            />
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="新密码（至少 6 位）"
+            />
+            <button type="button" className="authSubmit" onClick={onResetSubmit}>
+              确认重置
+            </button>
+            {forgotHint ? <div className="authError">{forgotHint}</div> : null}
+            <button type="button" className="authLinkBtn" onClick={() => setForgotOpen(false)}>
+              返回登录
+            </button>
+          </div>
+        ) : null}
 
         <button
           type="button"

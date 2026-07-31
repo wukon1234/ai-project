@@ -8,11 +8,37 @@ import HistoryPage from './HistoryPage'
 import KnowledgeBrowse from './KnowledgeBrowse'
 import KnowledgeSearch from './KnowledgeSearch'
 import ProfilePage from './ProfilePage'
+import ShareView from './ShareView'
 import UsageStatsPage from './UsageStatsPage'
-import { clearTokens, logout as logoutApi, me } from './api'
+import { clearTokens, logout as logoutApi, me, saveTokens } from './api'
 import './App.css'
 
 type AppView = 'chat' | 'search' | 'browse' | 'history' | 'profile' | 'favorites' | 'help' | 'stats'
+
+type ShareState = { kind: 'session' | 'document'; token: string } | null
+
+function consumeBootstrapParams() {
+  const params = new URLSearchParams(window.location.search)
+  const accessToken = params.get('accessToken')
+  const refreshToken = params.get('refreshToken')
+  const view = params.get('view')
+  const token = params.get('token')
+  let share: ShareState = null
+  if (view === 'share-session' && token) share = { kind: 'session', token }
+  if (view === 'share-document' && token) share = { kind: 'document', token }
+
+  if (accessToken || refreshToken || share) {
+    const url = new URL(window.location.href)
+    url.searchParams.delete('accessToken')
+    url.searchParams.delete('refreshToken')
+    url.searchParams.delete('sso')
+    url.searchParams.delete('view')
+    url.searchParams.delete('token')
+    window.history.replaceState({}, '', url.pathname + url.search + url.hash)
+  }
+
+  return { accessToken, refreshToken, share }
+}
 
 function App() {
   const [authed, setAuthed] = useState(false)
@@ -21,6 +47,7 @@ function App() {
   const [activeDoc, setActiveDoc] = useState<SourceDoc | null>(null)
   const [chatSeed, setChatSeed] = useState<string | undefined>(undefined)
   const [chatSessionId, setChatSessionId] = useState<number | undefined>(undefined)
+  const [share, setShare] = useState<ShareState>(null)
 
   function loginSuccess() {
     setAuthed(true)
@@ -42,12 +69,25 @@ function App() {
   useEffect(() => {
     let alive = true
     async function bootstrap() {
+      const boot = consumeBootstrapParams()
+      if (boot.share) setShare(boot.share)
+      if (boot.accessToken) {
+        saveTokens(boot.accessToken, boot.refreshToken || undefined)
+      }
       try {
         await me()
         if (alive) setAuthed(true)
       } catch (_err) {
-        clearTokens()
-        if (alive) setAuthed(false)
+        if (!boot.share) clearTokens()
+        if (alive && !boot.accessToken) setAuthed(false)
+        else if (alive && boot.accessToken) {
+          try {
+            await me()
+            if (alive) setAuthed(true)
+          } catch {
+            if (alive) setAuthed(false)
+          }
+        }
       } finally {
         if (alive) setBooting(false)
       }
@@ -60,6 +100,19 @@ function App() {
 
   if (booting) {
     return <div style={{ padding: 24 }}>加载中...</div>
+  }
+
+  if (share) {
+    return (
+      <ShareView
+        kind={share.kind}
+        token={share.token}
+        onClose={() => {
+          setShare(null)
+          setView(authed ? 'chat' : 'chat')
+        }}
+      />
+    )
   }
 
   if (!authed) {

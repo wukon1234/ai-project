@@ -1,18 +1,19 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Bookmark,
+  BookOpen,
+  ChevronRight,
   Download,
   MessageCircle,
+  MessagesSquare,
   Star,
   Target,
-  Timer,
-  Trophy,
-  BookOpen,
-  MessagesSquare,
   ThumbsDown,
   ThumbsUp,
-  ChevronRight,
+  Timer,
+  Trophy,
 } from 'lucide-react'
+import { exportStats, getStatsOverview, type StatsOverview } from './api'
 
 type RangeId = '7d' | '30d' | 'quarter' | 'custom'
 
@@ -20,295 +21,118 @@ const ranges: Array<{ id: RangeId; label: string }> = [
   { id: '7d', label: '近7天' },
   { id: '30d', label: '近30天' },
   { id: 'quarter', label: '本季度' },
-  { id: 'custom', label: '自定义' }
+  { id: 'custom', label: '自定义' },
 ]
 
-const sparklineAsk = [2, 3, 1, 4, 5, 3, 6, 4, 7, 5, 8, 4, 3, 5, 6, 4, 2, 5, 7, 4, 6, 8, 5, 3, 4, 6, 5, 4, 3, 5]
+const libName: Record<string, string> = {
+  hr: '人事制度',
+  product: '产品知识',
+  tech: '技术文档',
+  support: '售后 FAQ',
+  all: '全部',
+  unknown: '未分类',
+}
 
-const trendDays = [
-  { label: '6/30', ask: 2, rate: 90 },
-  { label: '7/2', ask: 3, rate: 88 },
-  { label: '7/4', ask: 1, rate: 100 },
-  { label: '7/6', ask: 4, rate: 85 },
-  { label: '7/8', ask: 5, rate: 92 },
-  { label: '7/10', ask: 3, rate: 87 },
-  { label: '7/12', ask: 6, rate: 90 },
-  { label: '7/14', ask: 4, rate: 88 },
-  { label: '7/15', ask: 5, rate: 91 },
-  { label: '7/17', ask: 7, rate: 86 },
-  { label: '7/19', ask: 4, rate: 93 },
-  { label: '7/21', ask: 6, rate: 89 },
-  { label: '7/22', ask: 8, rate: 94 },
-  { label: '7/24', ask: 5, rate: 90 },
-  { label: '7/26', ask: 3, rate: 88 },
-  { label: '7/28', ask: 5, rate: 92 }
-]
-
-const kbDistribution = [
-  { name: '人事制度', pct: 35, count: 16, color: '#2563EB' },
-  { name: '产品知识', pct: 28, count: 13, color: '#22C55E' },
-  { name: '技术文档', pct: 22, count: 10, color: '#8B5CF6' },
-  { name: '售后 FAQ', pct: 15, count: 8, color: '#F59E0B' }
-]
-
-const topQuestions = [
-  { rank: 1, title: '年假相关规定', count: 8 },
-  { rank: 2, title: '报销流程咨询', count: 6 },
-  { rank: 3, title: '产品参数对比', count: 5 },
-  { rank: 4, title: '考勤制度说明', count: 4 },
-  { rank: 5, title: '新人入职流程', count: 3 }
-]
-
-const achievements = [
-  {
-    id: 'explorer',
-    icon: Trophy,
-    title: '知识探索者',
-    desc: '累计提问满 50 次',
-    progress: 47,
-    total: 50,
-    done: false
-  },
-  {
-    id: 'precise',
-    icon: Target,
-    title: '精准提问',
-    desc: '连续 7 天有有效回答',
-    progress: 7,
-    total: 7,
-    done: true
-  },
-  {
-    id: 'deep',
-    icon: BookOpen,
-    title: '深度阅读',
-    desc: '点击查看来源 20+ 次',
-    progress: 28,
-    total: 20,
-    done: true
-  },
-  {
-    id: 'multi',
-    icon: MessagesSquare,
-    title: '多轮达人',
-    desc: '单会话超过 5 轮对话 3 次',
-    progress: 3,
-    total: 3,
-    done: true
-  }
-]
-
-/** Weekday × hour heatmap intensity 0–4 */
-const heatmap: number[][] = [
-  // Mon–Fri focus around 10–11 and 14–16
-  [0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 4, 3, 1, 2, 4, 4, 3, 1, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 4, 2, 1, 3, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 3, 1, 2, 4, 4, 2, 1, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 2, 1, 3, 4, 3, 2, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 4, 2, 0, 2, 3, 4, 2, 1, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-]
-
-const weekLabels = ['一', '二', '三', '四', '五', '六', '日']
-const hourLabels = [8, 10, 12, 14, 16, 18]
-
-const sourceClicksWeek = [3, 5, 2, 6, 4, 1, 7]
+const libColor = ['#2563EB', '#22C55E', '#8B5CF6', '#F59E0B', '#64748B']
+const weekLabels = ['日', '一', '二', '三', '四', '五', '六']
+const achieveIcons = [Trophy, Target, BookOpen, MessagesSquare]
 
 type UsageStatsPageProps = {
   onBack: () => void
   onAskAgain?: (question: string) => void
 }
 
-function Sparkline({ values, color = '#60A5FA' }: { values: number[]; color?: string }) {
-  const w = 120
-  const h = 32
-  const max = Math.max(...values, 1)
-  const min = Math.min(...values, 0)
-  const span = max - min || 1
-  const points = values
-    .map((v, i) => {
-      const x = (i / (values.length - 1)) * w
-      const y = h - ((v - min) / span) * (h - 4) - 2
-      return `${x},${y}`
-    })
-    .join(' ')
-
-  return (
-    <svg className="usSparkline" viewBox={`0 0 ${w} ${h}`} width="100%" height={32} aria-hidden="true">
-      <polyline fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" points={points} />
-    </svg>
-  )
-}
-
-function AreaTrendChart({
-  data,
-  hoverIndex,
-  onHover
-}: {
-  data: typeof trendDays
-  hoverIndex: number | null
-  onHover: (i: number | null) => void
-}) {
-  const w = 560
-  const h = 220
-  const pad = { t: 24, r: 16, b: 36, l: 36 }
-  const innerW = w - pad.l - pad.r
-  const innerH = h - pad.t - pad.b
-  const maxAsk = Math.max(...data.map((d) => d.ask), 1)
-
-  const coords = data.map((d, i) => {
-    const x = pad.l + (i / (data.length - 1)) * innerW
-    const y = pad.t + innerH - (d.ask / maxAsk) * innerH
-    return { x, y, ...d }
-  })
-
-  const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ')
-  const areaPath = `${linePath} L ${coords[coords.length - 1].x} ${pad.t + innerH} L ${coords[0].x} ${pad.t + innerH} Z`
-  const peak = coords.reduce((a, b) => (b.ask > a.ask ? b : a))
-
-  return (
-    <svg className="usTrendSvg" viewBox={`0 0 ${w} ${h}`} role="img" aria-label="提问趋势面积图">
-      <defs>
-        <linearGradient id="usAreaFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#DBEAFE" stopOpacity="0.95" />
-          <stop offset="100%" stopColor="#DBEAFE" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-
-      {[0, 0.25, 0.5, 0.75, 1].map((t) => {
-        const y = pad.t + innerH * (1 - t)
-        return (
-          <g key={t}>
-            <line x1={pad.l} y1={y} x2={w - pad.r} y2={y} className="usGridLine" />
-            <text x={pad.l - 8} y={y + 4} className="usAxisText" textAnchor="end">
-              {Math.round(maxAsk * t)}
-            </text>
-          </g>
-        )
-      })}
-
-      <path d={areaPath} fill="url(#usAreaFill)" />
-      <path d={linePath} fill="none" stroke="#2563EB" strokeWidth="2.5" strokeLinejoin="round" />
-
-      {coords.map((c, i) => (
-        <g key={c.label}>
-          <circle
-            cx={c.x}
-            cy={c.y}
-            r={hoverIndex === i ? 5 : 3}
-            fill="#2563EB"
-            className="usTrendDot"
-            onMouseEnter={() => onHover(i)}
-            onMouseLeave={() => onHover(null)}
-          />
-          {(i % 3 === 0 || i === coords.length - 1) && (
-            <text x={c.x} y={h - 10} className="usAxisText" textAnchor="middle">
-              {c.label}
-            </text>
-          )}
-        </g>
-      ))}
-
-      <g className="usPeakBadge">
-        <rect x={peak.x - 52} y={peak.y - 28} width={104} height={22} rx={8} />
-        <text x={peak.x} y={peak.y - 13} textAnchor="middle">
-          最高 {peak.ask} 次 · 7月22日
-        </text>
-      </g>
-
-      {hoverIndex !== null ? (
-        <g className="usTooltip">
-          <rect
-            x={coords[hoverIndex].x - 58}
-            y={coords[hoverIndex].y - 42}
-            width={116}
-            height={28}
-            rx={8}
-          />
-          <text x={coords[hoverIndex].x} y={coords[hoverIndex].y - 23} textAnchor="middle">
-            {coords[hoverIndex].label.replace('/', '月')}日 · {coords[hoverIndex].ask} 次提问
-          </text>
-        </g>
-      ) : null}
-    </svg>
-  )
-}
-
-function DonutChart({ items, center }: { items: typeof kbDistribution; center: string }) {
-  const size = 168
-  const stroke = 22
-  const r = (size - stroke) / 2
-  const c = 2 * Math.PI * r
-  let offset = 0
-
-  return (
-    <div className="usDonutWrap">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-        <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-          {items.map((item) => {
-            const len = (item.pct / 100) * c
-            const dash = `${len} ${c - len}`
-            const el = (
-              <circle
-                key={item.name}
-                cx={size / 2}
-                cy={size / 2}
-                r={r}
-                fill="none"
-                stroke={item.color}
-                strokeWidth={stroke}
-                strokeDasharray={dash}
-                strokeDashoffset={-offset}
-                strokeLinecap="butt"
-              />
-            )
-            offset += len
-            return el
-          })}
-        </g>
-      </svg>
-      <div className="usDonutCenter">
-        <strong>{center}</strong>
-        <span>提问合计</span>
-      </div>
-    </div>
-  )
-}
-
-function MiniStars({ value }: { value: number }) {
-  return (
-    <div className="usMiniStars" aria-label={`${value}/5`}>
-      {[1, 2, 3, 4, 5].map((n) => {
-        const fill = Math.min(1, Math.max(0, value - (n - 1)))
-        return (
-          <span key={n} className="usStarSlot">
-            <Star size={14} className="usStarEmpty" />
-            <span className="usStarFill" style={{ width: `${fill * 100}%` }}>
-              <Star size={14} />
-            </span>
-          </span>
-        )
-      })}
-    </div>
-  )
-}
-
 function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
   const [range, setRange] = useState<RangeId>('30d')
-  const [hoverTrend, setHoverTrend] = useState<number | null>(null)
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+  const [data, setData] = useState<StatsOverview | null>(null)
+  const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
-  const maxTop = useMemo(() => Math.max(...topQuestions.map((q) => q.count)), [])
 
   function showToast(msg: string) {
     setToast(msg)
     window.setTimeout(() => setToast(null), 1800)
   }
 
+  useEffect(() => {
+    if (range === 'custom' && (!customFrom || !customTo)) return
+    let alive = true
+    ;(async () => {
+      setLoading(true)
+      try {
+        const overview = await getStatsOverview({
+          range,
+          from: range === 'custom' ? customFrom : undefined,
+          to: range === 'custom' ? customTo : undefined,
+        })
+        if (alive) setData(overview)
+      } catch (err) {
+        if (alive) showToast(err instanceof Error ? err.message : '统计加载失败')
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [range, customFrom, customTo])
+
+  const kpi = data?.kpi
+  const askTrend = data?.askTrend || []
+  const kbItems = useMemo(() => {
+    return (data?.libraryDistribution || []).map((item, i) => ({
+      name: libName[item.libraryCode] || item.libraryCode,
+      pct: Number(item.percent) || 0,
+      count: item.count || 0,
+      color: libColor[i % libColor.length],
+    }))
+  }, [data])
+  const topQuestions = (data?.topQuestions || []).map((q, i) => ({
+    rank: i + 1,
+    title: q.question,
+    count: q.count,
+  }))
+  const maxTop = Math.max(...topQuestions.map((q) => q.count), 1)
+  const feedback = data?.feedbackOverview
+  const helpfulPct = Number(feedback?.helpfulPercent) || 0
+  const achievements = data?.achievements || []
+  const habit = data?.sourceHabit
+
+  const heatmap = useMemo(() => {
+    const grid: number[][] = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0))
+    let max = 1
+    for (const cell of data?.activeHeatmap || []) {
+      const d = cell.weekday ?? 0
+      const h = cell.hour ?? 0
+      if (d >= 0 && d < 7 && h >= 0 && h < 24) {
+        grid[d][h] = cell.count
+        max = Math.max(max, cell.count)
+      }
+    }
+    return grid.map((row) => row.map((c) => Math.min(4, Math.round((c / max) * 4))))
+  }, [data])
+
   function heatColor(level: number) {
     const palette = ['#E5E7EB', '#BFDBFE', '#93C5FD', '#3B82F6', '#1D4ED8']
     return palette[level] ?? palette[0]
   }
+
+  async function onExport() {
+    try {
+      await exportStats({
+        range,
+        from: range === 'custom' ? customFrom : undefined,
+        to: range === 'custom' ? customTo : undefined,
+      })
+      showToast('报告已导出')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '导出失败')
+    }
+  }
+
+  const mom = kpi?.askMomPercent ?? 0
+  const avgMin = habit?.avgReadMinutes
 
   return (
     <div className="usPage">
@@ -345,31 +169,34 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            className="usExportBtn"
-            onClick={() => showToast('报告已导出（mock）')}
-          >
+          {range === 'custom' ? (
+            <div className="usCustomRange">
+              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+              <span>~</span>
+              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+            </div>
+          ) : null}
+          <button type="button" className="usExportBtn" onClick={onExport}>
             <Download size={16} />
             导出报告
           </button>
-          <div className="usUpdated">今天 09:00 更新</div>
+          <div className="usUpdated">{data?.updatedAt || (loading ? '加载中…' : '—')} 更新</div>
         </div>
       </header>
 
       <main className="usBody">
-        {/* KPI row */}
         <section className="usKpiRow">
           <article className="usCard usKpiCard">
             <div className="usKpiTop">
               <div className="usIconCircle usIconBlue">
                 <MessageCircle size={18} />
               </div>
-              <div className="usDelta usDeltaUp">↑ 23% 较上月</div>
+              <div className={`usDelta ${mom >= 0 ? 'usDeltaUp' : 'usDeltaDown'}`}>
+                {mom >= 0 ? '↑' : '↓'} {Math.abs(mom)}% 环比
+              </div>
             </div>
-            <div className="usKpiValue">47</div>
-            <div className="usKpiLabel">本月提问</div>
-            <Sparkline values={sparklineAsk} color="#60A5FA" />
+            <div className="usKpiValue">{kpi?.askCount ?? 0}</div>
+            <div className="usKpiLabel">提问次数</div>
           </article>
 
           <article className="usCard usKpiCard">
@@ -377,13 +204,11 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
               <div className="usIconCircle usIconGreen">
                 <Timer size={18} />
               </div>
-              <div className="usDelta usDeltaUp">↑ 0.8h</div>
             </div>
             <div className="usKpiValue">
-              3.2 <span className="usKpiUnit">小时</span>
+              {kpi?.savedHours ?? 0} <span className="usKpiUnit">小时</span>
             </div>
             <div className="usKpiLabel">预估节省查询时间</div>
-            <div className="usKpiSub">约等于少翻 64 份文档</div>
           </article>
 
           <article className="usCard usKpiCard">
@@ -391,11 +216,10 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
               <div className="usIconCircle usIconOrange">
                 <Star size={18} />
               </div>
-              <MiniStars value={4.6} />
             </div>
-            <div className="usKpiValue">4.6</div>
+            <div className="usKpiValue">{kpi?.avgRating ?? 0}</div>
             <div className="usKpiLabel">我给出的平均评分</div>
-            <div className="usKpiSub">已评价 38 次</div>
+            <div className="usKpiSub">已评价 {kpi?.ratingCount ?? 0} 次</div>
           </article>
 
           <article className="usCard usKpiCard">
@@ -404,32 +228,39 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
                 <Bookmark size={18} />
               </div>
             </div>
-            <div className="usKpiValue">12</div>
+            <div className="usKpiValue">{kpi?.favoriteCount ?? 0}</div>
             <div className="usKpiLabel">收藏文档 / 回答</div>
-            <div className="usKpiSub">本月新增 5 条</div>
+            <div className="usKpiSub">本月新增 {kpi?.favoriteMonthNew ?? 0} 条</div>
           </article>
         </section>
 
-        {/* Trend + Distribution */}
         <section className="usRow usRow23">
           <article className="usCard">
             <div className="usCardHead">
               <div>
                 <h2>提问趋势</h2>
-                <p>近 30 天每日提问量</p>
-              </div>
-              <div className="usLegend">
-                <span>
-                  <i className="usLegDot usLegBlue" />
-                  提问次数
-                </span>
-                <span>
-                  <i className="usLegDot usLegGreenDash" />
-                  有效回答率
-                </span>
+                <p>
+                  {data?.from || ''} ~ {data?.to || ''}
+                </p>
               </div>
             </div>
-            <AreaTrendChart data={trendDays} hoverIndex={hoverTrend} onHover={setHoverTrend} />
+            <ul className="usTrendList">
+              {askTrend.length === 0 ? <li>暂无数据</li> : null}
+              {askTrend.slice(-14).map((d) => (
+                <li key={d.date}>
+                  <span>{d.date.slice(5)}</span>
+                  <div className="usTrendBarTrack">
+                    <div
+                      className="usTrendBarFill"
+                      style={{
+                        width: `${(d.count / Math.max(...askTrend.map((x) => x.count), 1)) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <em>{d.count}</em>
+                </li>
+              ))}
+            </ul>
           </article>
 
           <article className="usCard">
@@ -439,9 +270,9 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
                 <p>提问所属知识库占比</p>
               </div>
             </div>
-            <DonutChart items={kbDistribution} center="47 次" />
             <ul className="usKbLegend">
-              {kbDistribution.map((item) => (
+              {kbItems.length === 0 ? <li>暂无数据</li> : null}
+              {kbItems.map((item) => (
                 <li key={item.name}>
                   <span className="usKbLeft">
                     <i style={{ background: item.color }} />
@@ -457,7 +288,6 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
           </article>
         </section>
 
-        {/* Top Q + Feedback */}
         <section className="usRow usRowHalf">
           <article className="usCard">
             <div className="usCardHead">
@@ -467,6 +297,7 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
               </div>
             </div>
             <ul className="usTopList">
+              {topQuestions.length === 0 ? <li>暂无数据</li> : null}
               {topQuestions.map((q) => (
                 <li key={q.rank}>
                   <div className="usTopRank">{q.rank}</div>
@@ -476,10 +307,7 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
                       <span className="usTopCount">{q.count} 次</span>
                     </div>
                     <div className="usTopBarTrack">
-                      <div
-                        className="usTopBarFill"
-                        style={{ width: `${(q.count / maxTop) * 100}%` }}
-                      />
+                      <div className="usTopBarFill" style={{ width: `${(q.count / maxTop) * 100}%` }} />
                     </div>
                   </div>
                   <button
@@ -507,28 +335,27 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
             <div className="usFeedbackSplit">
               <div className="usFeedbackCol usFeedbackGood">
                 <ThumbsUp size={20} />
-                <div className="usFeedbackNum">32</div>
+                <div className="usFeedbackNum">{feedback?.helpful ?? 0}</div>
                 <div className="usFeedbackLabel">有帮助</div>
               </div>
               <div className="usFeedbackCol usFeedbackBad">
                 <ThumbsDown size={20} />
-                <div className="usFeedbackNum">6</div>
+                <div className="usFeedbackNum">{feedback?.unhelpful ?? 0}</div>
                 <div className="usFeedbackLabel">没帮助</div>
               </div>
             </div>
             <div className="usStackBar" aria-hidden="true">
-              <div className="usStackGood" style={{ width: '84%' }}>
-                有帮助 84%
+              <div className="usStackGood" style={{ width: `${helpfulPct || 0}%` }}>
+                有帮助 {helpfulPct || 0}%
               </div>
-              <div className="usStackBad" style={{ width: '16%' }}>
-                16%
+              <div className="usStackBad" style={{ width: `${100 - (helpfulPct || 0)}%` }}>
+                {100 - (helpfulPct || 0)}%
               </div>
             </div>
-            <div className="usSuccessHint">您的反馈帮助优化了 3 条知识</div>
+            <div className="usSuccessHint">{feedback?.optimizedHint || '暂无反馈数据'}</div>
           </article>
         </section>
 
-        {/* Achievements */}
         <section className="usCard usAchieveCard">
           <div className="usCardHead">
             <div>
@@ -537,22 +364,22 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
             </div>
           </div>
           <div className="usAchieveRow">
-            {achievements.map((item) => {
-              const Icon = item.icon
-              const pct = Math.min(100, Math.round((item.progress / item.total) * 100))
+            {achievements.map((item, idx) => {
+              const Icon = achieveIcons[idx % achieveIcons.length]
+              const pct = item.progress ?? 0
               return (
                 <div
-                  key={item.id}
-                  className={`usAchieveItem ${item.done ? 'usAchieveDone' : ''}`}
+                  key={item.name}
+                  className={`usAchieveItem ${item.completed ? 'usAchieveDone' : ''}`}
                 >
                   <div className="usAchieveIcon">
                     <Icon size={18} />
                   </div>
                   <div className="usAchieveBody">
-                    <div className="usAchieveTitle">{item.title}</div>
-                    <div className="usAchieveDesc">{item.desc}</div>
+                    <div className="usAchieveTitle">{item.name}</div>
+                    <div className="usAchieveDesc">{item.description}</div>
                     <div className="usAchieveMeta">
-                      {item.done ? '已达成' : `${item.progress}/${item.total}`}
+                      {item.completed ? '已达成' : `${item.current ?? 0}/${item.target ?? 0}`}
                     </div>
                     <div className="usAchieveTrack">
                       <div className="usAchieveFill" style={{ width: `${pct}%` }} />
@@ -564,7 +391,6 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
           </div>
         </section>
 
-        {/* Heatmap + Source habits */}
         <section className="usRow usRowHalf">
           <article className="usCard">
             <div className="usCardHead">
@@ -574,11 +400,6 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
               </div>
             </div>
             <div className="usHeatWrap">
-              <div className="usHeatHours">
-                {hourLabels.map((h) => (
-                  <span key={h}>{h}:00</span>
-                ))}
-              </div>
               <div className="usHeatGrid">
                 {heatmap.map((row, wi) => (
                   <div key={weekLabels[wi]} className="usHeatRow">
@@ -589,7 +410,7 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
                           key={`${wi}-${hi}`}
                           className="usHeatCell"
                           style={{ background: heatColor(level) }}
-                          title={`周${weekLabels[wi]} ${hi}:00 · 强度 ${level}`}
+                          title={`${weekLabels[wi]} ${hi}:00`}
                         />
                       ))}
                     </div>
@@ -597,9 +418,6 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
                 ))}
               </div>
             </div>
-            <p className="usHeatHint">
-              您通常在工作日 10:00–11:00、14:00–16:00 使用最多
-            </p>
           </article>
 
           <article className="usCard">
@@ -611,34 +429,23 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
             </div>
             <div className="usSourceMetrics">
               <div>
-                <strong>28</strong>
+                <strong>{habit?.openSourceCount ?? 0}</strong>
                 <span>点击查看来源</span>
               </div>
               <div>
-                <strong>11</strong>
+                <strong>{habit?.readCompleteCount ?? 0}</strong>
                 <span>完整阅读文档</span>
               </div>
               <div>
-                <strong>2分18秒</strong>
+                <strong>{avgMin == null ? '—' : `${avgMin} 分`}</strong>
                 <span>平均阅读时长</span>
-              </div>
-            </div>
-            <div className="usSourceBars">
-              <div className="usSourceBarsTitle">本周每日「点击原文」次数</div>
-              <div className="usMiniBars">
-                {sourceClicksWeek.map((v, i) => (
-                  <div key={i} className="usMiniBarCol">
-                    <div className="usMiniBar" style={{ height: `${(v / 7) * 72}px` }} />
-                    <span>{['一', '二', '三', '四', '五', '六', '日'][i]}</span>
-                  </div>
-                ))}
               </div>
             </div>
           </article>
         </section>
 
         <footer className="usFooterNote">
-          统计仅展示您本人的使用数据，数据每日更新 · 节省时间按行业平均检索时长估算
+          统计仅展示您本人的使用数据 · 节省时间按配置系数估算
         </footer>
       </main>
 

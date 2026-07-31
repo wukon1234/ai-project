@@ -96,7 +96,7 @@ kb:
   stats:
     minutes-saved-per-ask: ${KB_STATS_MINUTES_PER_ASK:4}
   share:
-    base-url: ${KB_SHARE_BASE_URL:http://localhost:8080}
+    base-url: ${KB_SHARE_BASE_URL:http://localhost:5173}
     doc-expire-hours: ${KB_SHARE_DOC_EXPIRE_HOURS:72}
     blocked-libraries: ${KB_SHARE_BLOCKED_LIBRARIES:}
     require-login: ${KB_SHARE_REQUIRE_LOGIN:false}
@@ -111,7 +111,7 @@ kb:
     client-secret: ${KB_SSO_CLIENT_SECRET:}
     tenant: ${KB_SSO_TENANT:common}
     redirect-uri: ${KB_SSO_REDIRECT_URI:http://localhost:8080/api/v1/auth/sso/callback}
-    frontend-redirect: ${KB_SSO_FRONTEND_REDIRECT:http://localhost:5173/auth/callback}
+    frontend-redirect: ${KB_SSO_FRONTEND_REDIRECT:http://localhost:5173/}
 
 auth:
   register:

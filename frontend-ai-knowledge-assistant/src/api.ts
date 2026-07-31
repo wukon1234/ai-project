@@ -578,3 +578,154 @@ export function updatePreferences(prefs: UserPreferences) {
     body: JSON.stringify(prefs),
   })
 }
+
+export type PageSummary = {
+  pageNo: number
+  knowledgeBase?: string
+  summary: string
+  cached?: boolean
+}
+
+export type RelatedChunk = {
+  page: number
+  title?: string
+  summary?: string
+  excerpt?: string
+  chunkId?: number
+}
+
+export function getPageSummary(docId: number | string, pageNo: number) {
+  return request<PageSummary>(`/api/v1/documents/${docId}/pages/${pageNo}/summary`)
+}
+
+export function getRelatedChunks(docId: number | string, pageNo: number, limit = 5) {
+  return request<RelatedChunk[]>(
+    `/api/v1/documents/${docId}/related-chunks?pageNo=${pageNo}&limit=${limit}`,
+  )
+}
+
+export function documentAskStream(docId: number | string, question: string, handlers: StreamHandlers) {
+  return consumeSse(`/api/v1/documents/${docId}/ask:stream`, { question }, handlers)
+}
+
+export type StatsOverview = {
+  range?: string
+  from?: string
+  to?: string
+  updatedAt?: string
+  kpi?: {
+    askCount?: number
+    askMomPercent?: number
+    savedHours?: number
+    avgRating?: number
+    ratingCount?: number
+    favoriteCount?: number
+    favoriteMonthNew?: number
+  }
+  askTrend?: Array<{ date: string; count: number }>
+  libraryDistribution?: Array<{ libraryCode: string; count: number; percent: number }>
+  topQuestions?: Array<{ question: string; count: number }>
+  feedbackOverview?: {
+    helpful?: number
+    unhelpful?: number
+    helpfulPercent?: number
+    optimizedHint?: string
+  }
+  achievements?: Array<{
+    name: string
+    description?: string
+    current?: number
+    target?: number
+    completed?: boolean
+    progress?: number
+  }>
+  activeHeatmap?: Array<{ weekday: number; hour: number; count: number }>
+  sourceHabit?: {
+    openSourceCount?: number
+    readCompleteCount?: number
+    avgReadMinutes?: number | null
+  }
+}
+
+export function getStatsOverview(params: {
+  range?: string
+  from?: string
+  to?: string
+}) {
+  const qs = new URLSearchParams()
+  if (params.range) qs.set('range', params.range)
+  if (params.from) qs.set('from', params.from)
+  if (params.to) qs.set('to', params.to)
+  const q = qs.toString()
+  return request<StatsOverview>(`/api/v1/stats/overview${q ? `?${q}` : ''}`)
+}
+
+export async function exportStats(params: { range?: string; from?: string; to?: string }) {
+  const qs = new URLSearchParams()
+  if (params.range) qs.set('range', params.range)
+  if (params.from) qs.set('from', params.from)
+  if (params.to) qs.set('to', params.to)
+  const q = qs.toString()
+  const resp = await fetch(`${API_BASE}/api/v1/stats/export${q ? `?${q}` : ''}`, {
+    headers: authHeaders(false),
+  })
+  if (!resp.ok) throw new Error('导出失败')
+  const blob = await resp.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `zhishiyun-stats-${params.range || 'report'}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export type HelpFaq = {
+  id?: number
+  question: string
+  answer: string
+  locale?: string
+  sortNo?: number
+}
+
+export function listFaqs(locale = 'zh-CN') {
+  return request<HelpFaq[]>(`/api/v1/help/faqs?locale=${encodeURIComponent(locale)}`)
+}
+
+export function forgotPassword(email: string) {
+  return request<{ accepted?: boolean; devResetToken?: string }>('/api/v1/auth/password/forgot', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export function resetPassword(token: string, newPassword: string) {
+  return request<null>('/api/v1/auth/password/reset', {
+    method: 'POST',
+    body: JSON.stringify({ token, newPassword }),
+  })
+}
+
+export function ssoAuthorizeUrl() {
+  return `${API_BASE}/api/v1/auth/sso/authorize`
+}
+
+export function getSharedSession(token: string) {
+  return request<{
+    title?: string
+    scope?: string
+    messages?: Array<{ role?: string; content?: string; answerStatus?: string }>
+    requireLogin?: boolean
+  }>(`/api/v1/share/sessions/${encodeURIComponent(token)}`)
+}
+
+export function getSharedDocument(token: string) {
+  return request<{
+    id?: number
+    title?: string
+    libraryCode?: string
+    pages?: number
+    summary?: string
+    fileType?: string
+    requireLogin?: boolean
+  }>(`/api/v1/share/documents/${encodeURIComponent(token)}`)
+}

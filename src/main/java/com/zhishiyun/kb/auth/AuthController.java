@@ -66,12 +66,21 @@ public class AuthController {
         response.sendRedirect(authService.buildSsoAuthorizeUrl());
     }
 
-    /** SSO 回调：签发本地 JWT，并可跳转前端。 */
+    /** SSO 回调：签发本地 JWT，并重定向到前端携带 token。 */
     @GetMapping("/sso/callback")
-    public Result<AuthResponse> ssoCallback(
+    public void ssoCallback(
             @RequestParam("code") String code,
-            @RequestParam(value = "state", required = false) String state) {
-        return Result.ok(authService.ssoCallback(code));
+            @RequestParam(value = "state", required = false) String state,
+            HttpServletResponse response) throws IOException {
+        AuthResponse auth = authService.ssoCallback(code);
+        String base = authService.getSsoFrontendRedirect();
+        if (base == null || base.trim().isEmpty()) {
+            base = "http://localhost:5173/";
+        }
+        String sep = base.contains("?") ? "&" : "?";
+        String access = auth.getAccessToken() == null ? "" : java.net.URLEncoder.encode(auth.getAccessToken(), "UTF-8");
+        String refresh = auth.getRefreshToken() == null ? "" : java.net.URLEncoder.encode(auth.getRefreshToken(), "UTF-8");
+        response.sendRedirect(base + sep + "accessToken=" + access + "&refreshToken=" + refresh + "&sso=1");
     }
 
     /** 发送重置密码令牌（防枚举，始终成功）。 */

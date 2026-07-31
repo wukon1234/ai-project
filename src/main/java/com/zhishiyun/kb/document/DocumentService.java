@@ -56,7 +56,7 @@ public class DocumentService {
     /** 禁止外链的敏感知识库，逗号分隔 */
     @Value("${kb.share.blocked-libraries:}")
     private String shareBlockedLibraries;
-    @Value("${kb.share.base-url:http://localhost:8080}")
+    @Value("${kb.share.base-url:http://localhost:5173}")
     private String shareBaseUrl;
 
     /** 文档元数据；带 Redis 短缓存，并记录浏览。 */
@@ -159,7 +159,11 @@ public class DocumentService {
         writeAudit(userId, "SHARE_DOC", "document", String.valueOf(docId));
         Map<String, Object> data = new HashMap<String, Object>();
         data.put("shareToken", token);
-        data.put("shareUrl", shareBaseUrl + "/api/v1/share/documents/" + token);
+        String base = shareBaseUrl == null ? "http://localhost:5173" : shareBaseUrl;
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        data.put("shareUrl", base + "/?view=share-document&token=" + token);
         data.put("expireHours", shareExpireHours);
         return data;
     }

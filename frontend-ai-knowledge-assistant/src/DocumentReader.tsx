@@ -14,13 +14,18 @@ import {
 } from 'lucide-react'
 import {
   deleteFavoriteDocument,
+  documentAskStream,
   downloadDocument,
   fetchDocumentBlobUrl,
   getDocumentMeta,
+  getPageSummary,
+  getRelatedChunks,
   saveFavoriteDocument,
   shareDocument,
   viewDocument,
   type DocumentMeta,
+  type PageSummary,
+  type RelatedChunk,
 } from './api'
 
 export type SourceDoc = {
@@ -46,10 +51,15 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
   const [bookmarked, setBookmarked] = useState(false)
   const [askText, setAskText] = useState('')
   const [askHint, setAskHint] = useState<string | null>(null)
+  const [askAnswer, setAskAnswer] = useState('')
+  const [askBusy, setAskBusy] = useState(false)
   const [mobileAskOpen, setMobileAskOpen] = useState(false)
   const [meta, setMeta] = useState<DocumentMeta | null>(null)
   const [fileUrl, setFileUrl] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [pageSummary, setPageSummary] = useState<PageSummary | null>(null)
+  const [related, setRelated] = useState<RelatedChunk[]>([])
+  const [aiLoading, setAiLoading] = useState(false)
   const highlightRef = useRef<HTMLDivElement | null>(null)
 
   const totalPages = meta?.pages || 86
@@ -101,12 +111,66 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
     return () => window.clearTimeout(timer)
   }, [page, zoom, doc.excerpt])
 
-  function onAskSubmit(e: FormEvent) {
+  useEffect(() => {
+    if (tab !== 'summary' && tab !== 'related') return
+    let alive = true
+    ;(async () => {
+      setAiLoading(true)
+      try {
+        if (tab === 'summary') {
+          const data = await getPageSummary(doc.id, page)
+          if (alive) setPageSummary(data)
+        } else {
+          const list = await getRelatedChunks(doc.id, page, 5)
+          if (alive) setRelated(list || [])
+        }
+      } catch (err) {
+        if (!alive) return
+        if (tab === 'summary') {
+          setPageSummary({
+            pageNo: page,
+            knowledgeBase,
+            summary: err instanceof Error ? err.message : '摘要加载失败',
+            cached: false,
+          })
+        } else {
+          setRelated([])
+          setAskHint(err instanceof Error ? err.message : '相关片段加载失败')
+        }
+      } finally {
+        if (alive) setAiLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [tab, page, doc.id, knowledgeBase])
+
+  async function onAskSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!askText.trim()) return
-    setAskHint(`同文档问答将在后续批次接入：${askText.trim()}`)
+    const q = askText.trim()
+    if (!q || askBusy) return
+    setAskBusy(true)
+    setAskAnswer('')
+    setAskHint('检索本文档中…')
     setAskText('')
     setMobileAskOpen(false)
+    let answer = ''
+    await documentAskStream(doc.id, q, {
+      onDelta: (d) => {
+        answer += d.content || ''
+        setAskAnswer(answer)
+      },
+      onDone: (done) => {
+        setAskHint(
+          done.status === 'NO_ANSWER'
+            ? '本文档中未找到相关内容'
+            : `回答完成 · ${done.elapsedMs ?? 0}ms`,
+        )
+      },
+      onError: (err) => setAskHint(err.message || '同文档问答失败'),
+    })
+    setAskBusy(false)
   }
 
   async function onShare() {
@@ -306,25 +370,41 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
               <div className="docSummaryCard">
                 <div className="docSummaryHead">
                   <span className="docAiOrb" aria-hidden="true" />
-                  <span>文档摘要</span>
+                  <span>页级 AI 摘要</span>
                 </div>
-                <p>{meta?.summary || doc.excerpt || '摘要将在入库完成后展示；页级 AI 摘要见后续批次。'}</p>
+                <p>
+                  {aiLoading
+                    ? '生成中…'
+                    : pageSummary?.summary || meta?.summary || doc.excerpt || '本页暂无摘要'}
+                </p>
                 <div className="docSummaryMeta">
-                  基于第 {page} 页 · {knowledgeBase}
+                  基于第 {pageSummary?.pageNo || page} 页 ·{' '}
+                  {pageSummary?.knowledgeBase || knowledgeBase}
+                  {pageSummary?.cached ? ' · 缓存' : ''}
                 </div>
               </div>
             ) : null}
 
             {tab === 'related' ? (
               <div className="docRelatedList">
-                <p className="docAskHint">相关片段接口将在 B10 接通，当前展示引用来源摘录。</p>
-                <button type="button" className="docRelatedItem docRelatedItemActive">
-                  <div className="docRelatedTop">
-                    <span className="docRelatedTitle">{title}</span>
-                    <span className="docRelatedPage">第 {page} 页</span>
-                  </div>
-                  <p>{doc.excerpt}</p>
-                </button>
+                {aiLoading ? <p className="docAskHint">加载相关片段…</p> : null}
+                {!aiLoading && related.length === 0 ? (
+                  <p className="docAskHint">暂无相关片段，可换页或换关键词提问。</p>
+                ) : null}
+                {related.map((item) => (
+                  <button
+                    key={`${item.chunkId}-${item.page}`}
+                    type="button"
+                    className={`docRelatedItem ${item.page === page ? 'docRelatedItemActive' : ''}`}
+                    onClick={() => setPage(item.page)}
+                  >
+                    <div className="docRelatedTop">
+                      <span className="docRelatedTitle">{item.title || title}</span>
+                      <span className="docRelatedPage">第 {item.page} 页</span>
+                    </div>
+                    <p>{item.excerpt || item.summary}</p>
+                  </button>
+                ))}
               </div>
             ) : null}
 
@@ -332,7 +412,7 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
               <div className="docAskPanel">
                 <div className="docAskIntro">
                   <Sparkles size={16} />
-                  <span>仅检索本文档内容（B10）</span>
+                  <span>仅检索本文档内容</span>
                 </div>
                 <form className="docAskForm" onSubmit={onAskSubmit}>
                   <textarea
@@ -342,12 +422,14 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
                     value={askText}
                     onChange={(e) => setAskText(e.target.value)}
                     aria-label="同文档问答输入"
+                    disabled={askBusy}
                   />
-                  <button className="docAskSend" type="submit" disabled={!askText.trim()}>
+                  <button className="docAskSend" type="submit" disabled={!askText.trim() || askBusy}>
                     <Send size={16} />
-                    <span>提问</span>
+                    <span>{askBusy ? '回答中…' : '提问'}</span>
                   </button>
                 </form>
+                {askAnswer ? <div className="docAskAnswer">{askAnswer}</div> : null}
                 {askHint ? (
                   <div className="docAskHint" role="status">
                     {askHint}
