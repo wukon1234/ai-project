@@ -1,15 +1,11 @@
 package com.zhishiyun.kb.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.zhishiyun.kb.service.ChatSessionService;
 import com.zhishiyun.kb.common.BizException;
 import com.zhishiyun.kb.common.ErrorCode;
-import com.zhishiyun.kb.service.DocumentService;
-import com.zhishiyun.kb.entity.AuditLogEntity;
 import com.zhishiyun.kb.entity.ChatMessageEntity;
 import com.zhishiyun.kb.entity.ChatSessionEntity;
 import com.zhishiyun.kb.entity.KbDocumentEntity;
-import com.zhishiyun.kb.mapper.AuditLogMapper;
 import com.zhishiyun.kb.mapper.ChatMessageMapper;
 import com.zhishiyun.kb.mapper.ChatSessionMapper;
 import com.zhishiyun.kb.mapper.KbDocumentMapper;
@@ -36,7 +32,7 @@ public class ShareService {
     private final ChatSessionService chatSessionService;
     private final DocumentService documentService;
     private final KbDocumentMapper kbDocumentMapper;
-    private final AuditLogMapper auditLogMapper;
+    private final AuditService auditService;
 
     @Value("${kb.share.base-url:http://localhost:5173}")
     private String shareBaseUrl;
@@ -108,13 +104,7 @@ public class ShareService {
 
     /** 写入分享相关审计日志。 */
     private void writeAudit(Long userId, String action, String targetType, String targetId) {
-        AuditLogEntity audit = new AuditLogEntity();
-        audit.setUserId(userId);
-        audit.setAction(action);
-        audit.setTargetType(targetType);
-        audit.setTargetId(targetId);
-        audit.setDetail(action);
-        auditLogMapper.insert(audit);
+        auditService.write(userId, action, targetType, targetId, action);
     }
 
     private String trimSlash(String url) {

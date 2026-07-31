@@ -20,6 +20,7 @@ type LoginTab = 'email' | 'phone'
 
 type AuthPageProps = {
   onSuccess: () => void
+  onOpenAdmin?: () => void
 }
 
 const t = {
@@ -95,7 +96,7 @@ const t = {
   }
 } as const
 
-function AuthPage({ onSuccess }: AuthPageProps) {
+function AuthPage({ onSuccess, onOpenAdmin }: AuthPageProps) {
   const [mode, setMode] = useState<AuthMode>('login')
   const [loginTab, setLoginTab] = useState<LoginTab>('email')
   const [showPassword, setShowPassword] = useState(false)
@@ -509,6 +510,11 @@ function AuthPage({ onSuccess }: AuthPageProps) {
 
           <div className="authFooter">
             <span>{copy.copyright}</span>
+            {onOpenAdmin ? (
+              <button type="button" className="authLinkBtn" onClick={onOpenAdmin}>
+                管理后台
+              </button>
+            ) : null}
           </div>
         </div>
 

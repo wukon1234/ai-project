@@ -27,6 +27,8 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
@@ -35,6 +37,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import javax.imageio.ImageIO;
 
@@ -54,6 +58,11 @@ public class IngestService {
     private final OcrClient ocrClient;
     private final KbPageVisionMapper kbPageVisionMapper;
     private final VisionClient visionClient;
+
+    /** 代理自身，避免同类 @Async 自调用失效。 */
+    @Lazy
+    @Autowired
+    private IngestService self;
 
     /** 上传 PDF/图片：落盘建档，创建 PENDING 任务并异步解析。 */
     @Transactional
@@ -90,7 +99,7 @@ public class IngestService {
         task.setStatus("PENDING");
         task.setProgress(0);
         ingestTaskMapper.insert(task);
-        parseAsync(task.getId(), document.getId());
+        scheduleParse(task.getId(), document.getId());
         return new IngestUploadResponse(document.getId(), task.getId());
     }
 
@@ -118,8 +127,22 @@ public class IngestService {
         task.setStatus("PENDING");
         task.setProgress(0);
         ingestTaskMapper.insert(task);
-        parseAsync(task.getId(), docId);
+        scheduleParse(task.getId(), docId);
         return new IngestUploadResponse(docId, task.getId());
+    }
+
+    /** 事务提交后再异步解析，避免自调用导致同步阻塞/回滚。 */
+    private void scheduleParse(final Long taskId, final Long docId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    self.parseAsync(taskId, docId);
+                }
+            });
+        } else {
+            self.parseAsync(taskId, docId);
+        }
     }
 
     /** 异步解析：抽文本/OCR/Vision → 分块入库 → READY/FAILED。 */
@@ -128,6 +151,10 @@ public class IngestService {
     public void parseAsync(Long taskId, Long docId) {
         IngestTaskEntity task = ingestTaskMapper.selectById(taskId);
         KbDocumentEntity document = kbDocumentMapper.selectById(docId);
+        if (task == null || document == null) {
+            log.warn("parse skipped, missing task/doc taskId={} docId={}", taskId, docId);
+            return;
+        }
         try {
             updateTask(task, "RUNNING", 5, null);
             File file = localStorageService.getFile(document.getStorageKey());
@@ -148,11 +175,11 @@ public class IngestService {
             } catch (Exception ignored) {
             }
             updateTask(task, "SUCCESS", 100, null);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             log.error("parse failed, doc={}", docId, e);
             document.setStatus(DocStatus.FAILED.name());
             kbDocumentMapper.updateById(document);
-            updateTask(task, "FAILED", task.getProgress(), e.getMessage());
+            updateTask(task, "FAILED", task.getProgress() == null ? 0 : task.getProgress(), e.getMessage());
         }
     }
 

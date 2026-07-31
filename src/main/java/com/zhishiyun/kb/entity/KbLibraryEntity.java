@@ -17,4 +17,7 @@ public class KbLibraryEntity extends BaseEntity {
     private String name;
     private String description;
     private String tags;
+    private Integer docCount;
+    /** 1=全员可读 */
+    private Integer publicRead;
 }

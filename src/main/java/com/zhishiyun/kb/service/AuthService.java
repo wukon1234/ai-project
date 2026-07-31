@@ -11,12 +11,10 @@ import com.zhishiyun.kb.dto.RegisterRequest;
 import com.zhishiyun.kb.dto.ResetPasswordRequest;
 import com.zhishiyun.kb.common.BizException;
 import com.zhishiyun.kb.common.ErrorCode;
-import com.zhishiyun.kb.entity.AuditLogEntity;
 import com.zhishiyun.kb.entity.KbAclEntity;
 import com.zhishiyun.kb.entity.SysRefreshTokenEntity;
 import com.zhishiyun.kb.entity.SysUserEntity;
 import com.zhishiyun.kb.entity.UserPreferenceEntity;
-import com.zhishiyun.kb.mapper.AuditLogMapper;
 import com.zhishiyun.kb.mapper.KbAclMapper;
 import com.zhishiyun.kb.mapper.SysRefreshTokenMapper;
 import com.zhishiyun.kb.mapper.SysUserMapper;
@@ -55,7 +53,7 @@ public class AuthService {
     private final UserPreferenceMapper userPreferenceMapper;
     private final SysRefreshTokenMapper refreshTokenMapper;
     private final KbAclMapper kbAclMapper;
-    private final AuditLogMapper auditLogMapper;
+    private final AuditService auditService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
@@ -93,8 +91,10 @@ public class AuthService {
         if (user.getStatus() == null || user.getStatus() != 1) {
             throw new BizException(ErrorCode.BIZ_ERROR, "账号不可用");
         }
+        user.setLastLoginAt(LocalDateTime.now());
+        sysUserMapper.updateById(user);
         AuthResponse response = buildTokens(user, Boolean.TRUE.equals(request.getRememberMe()));
-        writeAudit(user.getId(), "LOGIN");
+        auditService.write(user.getId(), "LOGIN");
         return response;
     }
 
@@ -229,14 +229,7 @@ public class AuthService {
     }
 
     private void writeAudit(Long userId, String action) {
-        AuditLogEntity log = new AuditLogEntity();
-        log.setUserId(userId);
-        log.setAction(action);
-        log.setTargetType("auth");
-        log.setTargetId(String.valueOf(userId));
-        log.setDetail(action);
-        log.setCreatedAt(LocalDateTime.now());
-        auditLogMapper.insert(log);
+        auditService.write(userId, action);
     }
 
     private String sha256(String raw) {

@@ -3,10 +3,8 @@ package com.zhishiyun.kb.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zhishiyun.kb.common.BizException;
 import com.zhishiyun.kb.common.ErrorCode;
-import com.zhishiyun.kb.entity.KbAclEntity;
 import com.zhishiyun.kb.entity.SysUserEntity;
 import com.zhishiyun.kb.entity.UserPreferenceEntity;
-import com.zhishiyun.kb.mapper.KbAclMapper;
 import com.zhishiyun.kb.mapper.SysUserMapper;
 import com.zhishiyun.kb.mapper.UserPreferenceMapper;
 import com.zhishiyun.kb.dto.PreferenceRequest;
@@ -25,7 +23,7 @@ public class ProfileService {
 
     private final SysUserMapper sysUserMapper;
     private final UserPreferenceMapper userPreferenceMapper;
-    private final KbAclMapper kbAclMapper;
+    private final LibraryAccessService libraryAccessService;
 
     /** 个人资料。 */
     public Map<String, Object> profile(Long userId) {
@@ -83,13 +81,8 @@ public class ProfileService {
     private void validateScopes(Long userId, List<String> scopes) {
         if (scopes == null || scopes.isEmpty()) throw new BizException(ErrorCode.PARAM_INVALID, "defaultKbScopes 不能为空");
         if (scopes.contains("all")) throw new BizException(ErrorCode.PARAM_INVALID, "defaultKbScopes 不能包含 all");
-        List<String> acl = kbAclMapper.selectList(new LambdaQueryWrapper<KbAclEntity>().eq(KbAclEntity::getUserId, userId))
-                .stream().map(KbAclEntity::getLibraryCode).collect(Collectors.toList());
         for (String s : scopes) {
-            if (!Arrays.asList("product", "hr", "tech", "support").contains(s)) {
-                throw new BizException(ErrorCode.PARAM_INVALID, "defaultKbScopes 非法");
-            }
-            if (!acl.contains(s)) {
+            if (!libraryAccessService.canRead(userId, s)) {
                 throw new BizException(ErrorCode.FORBIDDEN_LIBRARY);
             }
         }

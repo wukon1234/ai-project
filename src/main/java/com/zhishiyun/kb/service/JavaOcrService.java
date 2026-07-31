@@ -39,6 +39,10 @@ public class JavaOcrService {
         } catch (TesseractException e) {
             log.warn("Java OCR failed: {}", e.getMessage());
             return new OcrResult("", 0D);
+        } catch (Throwable t) {
+            // tess4j 缺 tessdata 时可能抛 Error(Invalid memory access)
+            log.warn("Java OCR crashed: {}", t.toString());
+            return new OcrResult("", 0D);
         }
     }
 

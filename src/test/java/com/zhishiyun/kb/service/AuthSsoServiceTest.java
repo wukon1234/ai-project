@@ -4,7 +4,6 @@ package com.zhishiyun.kb.service;
 import com.zhishiyun.kb.config.JwtProperties;
 import com.zhishiyun.kb.dto.AuthResponse;
 import com.zhishiyun.kb.entity.SysUserEntity;
-import com.zhishiyun.kb.mapper.AuditLogMapper;
 import com.zhishiyun.kb.mapper.KbAclMapper;
 import com.zhishiyun.kb.mapper.SysRefreshTokenMapper;
 import com.zhishiyun.kb.mapper.SysUserMapper;
@@ -27,7 +26,7 @@ class AuthSsoServiceTest {
         UserPreferenceMapper preferenceMapper = Mockito.mock(UserPreferenceMapper.class);
         SysRefreshTokenMapper refreshTokenMapper = Mockito.mock(SysRefreshTokenMapper.class);
         KbAclMapper aclMapper = Mockito.mock(KbAclMapper.class);
-        AuditLogMapper auditLogMapper = Mockito.mock(AuditLogMapper.class);
+        AuditService auditService = Mockito.mock(AuditService.class);
         StringRedisTemplate redis = Mockito.mock(StringRedisTemplate.class);
         JwtProperties props = new JwtProperties();
         props.setIssuer("test");
@@ -38,7 +37,7 @@ class AuthSsoServiceTest {
         JwtService jwtService = new JwtService(props);
 
         AuthService service = new AuthService(
-                userMapper, preferenceMapper, refreshTokenMapper, aclMapper, auditLogMapper,
+                userMapper, preferenceMapper, refreshTokenMapper, aclMapper, auditService,
                 new BCryptPasswordEncoder(), jwtService, props, redis);
         ReflectionTestUtils.setField(service, "ssoMockEnabled", true);
 

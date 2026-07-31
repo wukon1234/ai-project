@@ -5,19 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zhishiyun.kb.common.BizException;
 import com.zhishiyun.kb.common.ErrorCode;
 import com.zhishiyun.kb.dto.DocumentMetaResponse;
-import com.zhishiyun.kb.entity.AuditLogEntity;
 import com.zhishiyun.kb.entity.FavDocumentEntity;
-import com.zhishiyun.kb.entity.KbAclEntity;
 import com.zhishiyun.kb.entity.KbDocumentEntity;
 import com.zhishiyun.kb.entity.KbLibraryEntity;
 import com.zhishiyun.kb.entity.UsageEventEntity;
-import com.zhishiyun.kb.mapper.AuditLogMapper;
 import com.zhishiyun.kb.mapper.FavDocumentMapper;
-import com.zhishiyun.kb.mapper.KbAclMapper;
 import com.zhishiyun.kb.mapper.KbDocumentMapper;
 import com.zhishiyun.kb.mapper.KbLibraryMapper;
 import com.zhishiyun.kb.mapper.UsageEventMapper;
-import com.zhishiyun.kb.service.LocalStorageService;
 import java.io.File;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -45,10 +40,10 @@ public class DocumentService {
 
     private final KbDocumentMapper kbDocumentMapper;
     private final KbLibraryMapper kbLibraryMapper;
-    private final KbAclMapper kbAclMapper;
+    private final LibraryAccessService libraryAccessService;
     private final FavDocumentMapper favDocumentMapper;
     private final UsageEventMapper usageEventMapper;
-    private final AuditLogMapper auditLogMapper;
+    private final AuditService auditService;
     private final LocalStorageService localStorageService;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
@@ -221,10 +216,7 @@ public class DocumentService {
             log.warn("document not found, userId={}, docId={}", userId, docId);
             throw new BizException(ErrorCode.PARAM_INVALID, "文档不存在");
         }
-        Long count = kbAclMapper.selectCount(new LambdaQueryWrapper<KbAclEntity>()
-                .eq(KbAclEntity::getUserId, userId)
-                .eq(KbAclEntity::getLibraryCode, doc.getLibraryCode()));
-        if (count == null || count == 0) {
+        if (!libraryAccessService.canRead(userId, doc.getLibraryCode())) {
             log.warn("document acl denied, userId={}, docId={}, library={}", userId, docId, doc.getLibraryCode());
             throw new BizException(ErrorCode.FORBIDDEN_LIBRARY);
         }
@@ -239,12 +231,6 @@ public class DocumentService {
     }
 
     private void writeAudit(Long userId, String action, String targetType, String targetId) {
-        AuditLogEntity audit = new AuditLogEntity();
-        audit.setUserId(userId);
-        audit.setAction(action);
-        audit.setTargetType(targetType);
-        audit.setTargetId(targetId);
-        audit.setDetail(action);
-        auditLogMapper.insert(audit);
+        auditService.write(userId, action, targetType, targetId, action);
     }
 }

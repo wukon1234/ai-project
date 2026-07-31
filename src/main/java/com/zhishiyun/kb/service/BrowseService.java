@@ -3,10 +3,8 @@ package com.zhishiyun.kb.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zhishiyun.kb.common.BizException;
 import com.zhishiyun.kb.common.ErrorCode;
-import com.zhishiyun.kb.entity.KbAclEntity;
 import com.zhishiyun.kb.entity.KbDocumentEntity;
 import com.zhishiyun.kb.entity.KbLibraryEntity;
-import com.zhishiyun.kb.mapper.KbAclMapper;
 import com.zhishiyun.kb.mapper.KbDocumentMapper;
 import com.zhishiyun.kb.mapper.KbLibraryMapper;
 import java.time.format.DateTimeFormatter;
@@ -14,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,15 +24,16 @@ import org.springframework.util.StringUtils;
 public class BrowseService {
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private final KbAclMapper kbAclMapper;
+    private final LibraryAccessService libraryAccessService;
     private final KbLibraryMapper kbLibraryMapper;
     private final KbDocumentMapper kbDocumentMapper;
 
     /** 返回用户有权访问的知识库树。 */
     public List<Map<String, Object>> libraries(Long userId) {
-        List<String> scopes = kbAclMapper.selectList(new LambdaQueryWrapper<KbAclEntity>().eq(KbAclEntity::getUserId, userId))
-                .stream().map(KbAclEntity::getLibraryCode).distinct().collect(Collectors.toList());
-        if (scopes.isEmpty()) return new ArrayList<Map<String, Object>>();
+        Set<String> scopes = libraryAccessService.accessibleLibraryCodes(userId);
+        if (scopes.isEmpty()) {
+            return new ArrayList<Map<String, Object>>();
+        }
         List<KbLibraryEntity> libraries = kbLibraryMapper.selectList(new LambdaQueryWrapper<KbLibraryEntity>()
                 .in(KbLibraryEntity::getCode, scopes));
         List<Map<String, Object>> res = new ArrayList<Map<String, Object>>();
@@ -53,9 +53,7 @@ public class BrowseService {
 
     /** 某库下文档分页列表（支持分类与关键词）。 */
     public Map<String, Object> libraryDocs(Long userId, String code, String category, String q, int page, int size) {
-        List<String> scopes = kbAclMapper.selectList(new LambdaQueryWrapper<KbAclEntity>().eq(KbAclEntity::getUserId, userId))
-                .stream().map(KbAclEntity::getLibraryCode).distinct().collect(Collectors.toList());
-        if (!scopes.contains(code)) {
+        if (!libraryAccessService.canRead(userId, code)) {
             throw new BizException(ErrorCode.FORBIDDEN_LIBRARY);
         }
         List<KbDocumentEntity> docs = kbDocumentMapper.selectList(new LambdaQueryWrapper<KbDocumentEntity>()

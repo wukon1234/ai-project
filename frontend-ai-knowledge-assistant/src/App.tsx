@@ -10,12 +10,39 @@ import KnowledgeSearch from './KnowledgeSearch'
 import ProfilePage from './ProfilePage'
 import ShareView from './ShareView'
 import UsageStatsPage from './UsageStatsPage'
+import AdminApp from './admin/AdminApp'
 import { clearTokens, logout as logoutApi, me, saveTokens } from './api'
 import './App.css'
 
 type AppView = 'chat' | 'search' | 'browse' | 'history' | 'profile' | 'favorites' | 'help' | 'stats'
+type AppSurface = 'user' | 'admin'
 
 type ShareState = { kind: 'session' | 'document'; token: string } | null
+
+const SURFACE_KEY = 'zn-app-surface'
+
+function readSurface(): AppSurface {
+  const params = new URLSearchParams(window.location.search)
+  const app = params.get('app')
+  if (app === 'admin') return 'admin'
+  if (app === 'user') return 'user'
+  return localStorage.getItem(SURFACE_KEY) === 'admin' ? 'admin' : 'user'
+}
+
+function writeSurface(surface: AppSurface) {
+  localStorage.setItem(SURFACE_KEY, surface)
+  const url = new URL(window.location.href)
+  if (surface === 'admin') {
+    url.searchParams.set('app', 'admin')
+  } else {
+    url.searchParams.delete('app')
+    url.searchParams.delete('adminView')
+    url.searchParams.delete('action')
+    url.searchParams.delete('library')
+    url.searchParams.delete('status')
+  }
+  window.history.replaceState({}, '', url.pathname + url.search + url.hash)
+}
 
 function consumeBootstrapParams() {
   const params = new URLSearchParams(window.location.search)
@@ -41,13 +68,19 @@ function consumeBootstrapParams() {
 }
 
 function App() {
+  const [surface, setSurface] = useState<AppSurface>(() => readSurface())
   const [authed, setAuthed] = useState(false)
   const [booting, setBooting] = useState(true)
   const [view, setView] = useState<AppView>('chat')
   const [activeDoc, setActiveDoc] = useState<SourceDoc | null>(null)
   const [chatSeed, setChatSeed] = useState<string | undefined>(undefined)
   const [chatSessionId, setChatSessionId] = useState<number | undefined>(undefined)
-  const [share, setShare] = useState<ShareState>(null)
+  const [share, setShare] = useState<ShareState | null>(null)
+
+  function switchSurface(next: AppSurface) {
+    writeSurface(next)
+    setSurface(next)
+  }
 
   function loginSuccess() {
     setAuthed(true)
@@ -98,6 +131,10 @@ function App() {
     }
   }, [])
 
+  if (surface === 'admin') {
+    return <AdminApp onBackToUser={() => switchSurface('user')} />
+  }
+
   if (booting) {
     return <div style={{ padding: 24 }}>加载中...</div>
   }
@@ -116,7 +153,7 @@ function App() {
   }
 
   if (!authed) {
-    return <AuthPage onSuccess={loginSuccess} />
+    return <AuthPage onSuccess={loginSuccess} onOpenAdmin={() => switchSurface('admin')} />
   }
 
   if (activeDoc) {

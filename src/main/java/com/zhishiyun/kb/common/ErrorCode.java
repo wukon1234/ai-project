@@ -9,8 +9,8 @@ public enum ErrorCode {
     PARAM_INVALID(40001, "参数错误"),
     /** 未登录或 token 无效 */
     UNAUTHORIZED(40101, "未登录"),
-    /** 无目标知识库 ACL */
-    FORBIDDEN_LIBRARY(40301, "无库权限"),
+    /** 无目标知识库 ACL 或无管理后台权限 */
+    FORBIDDEN_LIBRARY(40301, "无权限"),
     /** 一般业务错误 */
     BIZ_ERROR(40002, "业务错误"),
     /** 用户级问答限流 */

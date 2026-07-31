@@ -3,6 +3,7 @@ package com.zhishiyun.kb.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import java.time.LocalDateTime;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -19,8 +20,10 @@ public class SysUserEntity extends BaseEntity {
     private String mobile;
     private String passwordHash;
     private String deptName;
+    private String deptCode;
     private String roleCode;
     private Integer status;
     /** Azure AD oid，用于 SSO 绑定 */
     private String ssoSubject;
+    private LocalDateTime lastLoginAt;
 }
