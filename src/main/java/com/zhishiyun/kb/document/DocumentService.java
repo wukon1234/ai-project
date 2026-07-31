@@ -24,12 +24,15 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 /** 原文阅读：元数据、下载、ACL 校验、浏览埋点与分享 token。 */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DocumentService {
@@ -68,9 +71,11 @@ public class DocumentService {
             if (cached != null && !cached.isEmpty()) {
                 DocumentMetaResponse resp = objectMapper.readValue(cached, DocumentMetaResponse.class);
                 resp.setFavorited(isFavorited(userId, docId));
+                log.debug("doc meta cache hit, userId={}, docId={}", userId, docId);
                 return resp;
             }
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
+            log.warn("doc meta cache read failed, docId={}: {}", docId, ex.getMessage());
         }
         KbLibraryEntity library = kbLibraryMapper.selectById(doc.getLibraryId());
         DocumentMetaResponse response = DocumentMetaResponse.builder()
@@ -88,7 +93,8 @@ public class DocumentService {
                 .build();
         try {
             redisTemplate.opsForValue().set(key, objectMapper.writeValueAsString(response), java.time.Duration.ofMinutes(30));
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
+            log.warn("doc meta cache write failed, docId={}: {}", docId, ex.getMessage());
         }
         return response;
     }
@@ -96,8 +102,20 @@ public class DocumentService {
     /** 返回原文文件（预览或下载），需通过 ACL。 */
     public File file(Long userId, Long docId, boolean download) {
         KbDocumentEntity doc = getPermittedDocument(userId, docId);
+        String storageKey = doc.getStorageKey();
+        if (!StringUtils.hasText(storageKey)) {
+            log.warn("document file missing storageKey, userId={}, docId={}, download={}", userId, docId, download);
+            throw new BizException(ErrorCode.BIZ_ERROR, "暂无原文文件");
+        }
+        File file = localStorageService.getFile(storageKey);
+        if (file == null || !file.exists() || !file.isFile()) {
+            log.warn("document file not found, userId={}, docId={}, storageKey={}, download={}",
+                    userId, docId, storageKey, download);
+            throw new BizException(ErrorCode.BIZ_ERROR, "暂无原文文件");
+        }
         writeAudit(userId, download ? "DOWNLOAD_DOC" : "PREVIEW_DOC", "document", String.valueOf(docId));
-        return localStorageService.getFile(doc.getStorageKey());
+        log.info("document file access, userId={}, docId={}, download={}", userId, docId, download);
+        return file;
     }
 
     /**
@@ -154,6 +172,7 @@ public class DocumentService {
         try {
             redisTemplate.opsForValue().set(DOC_SHARE_PREFIX + token, payload, java.time.Duration.ofHours(shareExpireHours));
         } catch (Exception ex) {
+            log.warn("doc share redis unavailable, fallback to local store, docId={}: {}", docId, ex.getMessage());
             LOCAL_SHARE_STORE.put(token, payload);
         }
         writeAudit(userId, "SHARE_DOC", "document", String.valueOf(docId));
@@ -165,6 +184,7 @@ public class DocumentService {
         }
         data.put("shareUrl", base + "/?view=share-document&token=" + token);
         data.put("expireHours", shareExpireHours);
+        log.info("document share created, userId={}, docId={}, expireHours={}", userId, docId, shareExpireHours);
         return data;
     }
 
@@ -173,12 +193,14 @@ public class DocumentService {
         String payload = null;
         try {
             payload = redisTemplate.opsForValue().get(DOC_SHARE_PREFIX + token);
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
+            log.warn("resolve doc share redis failed: {}", ex.getMessage());
         }
         if (payload == null || payload.isEmpty()) {
             payload = LOCAL_SHARE_STORE.get(token);
         }
         if (payload == null || payload.isEmpty()) {
+            log.warn("doc share token invalid or expired");
             throw new BizException(ErrorCode.PARAM_INVALID, "分享链接无效或已过期");
         }
         try {
@@ -187,6 +209,7 @@ public class DocumentService {
             Object docId = map.get("docId");
             return Long.valueOf(String.valueOf(docId));
         } catch (Exception e) {
+            log.warn("doc share token parse failed: {}", e.getMessage());
             throw new BizException(ErrorCode.PARAM_INVALID, "分享链接无效");
         }
     }
@@ -195,12 +218,14 @@ public class DocumentService {
     public KbDocumentEntity getPermittedDocument(Long userId, Long docId) {
         KbDocumentEntity doc = kbDocumentMapper.selectById(docId);
         if (doc == null) {
+            log.warn("document not found, userId={}, docId={}", userId, docId);
             throw new BizException(ErrorCode.PARAM_INVALID, "文档不存在");
         }
         Long count = kbAclMapper.selectCount(new LambdaQueryWrapper<KbAclEntity>()
                 .eq(KbAclEntity::getUserId, userId)
                 .eq(KbAclEntity::getLibraryCode, doc.getLibraryCode()));
         if (count == null || count == 0) {
+            log.warn("document acl denied, userId={}, docId={}, library={}", userId, docId, doc.getLibraryCode());
             throw new BizException(ErrorCode.FORBIDDEN_LIBRARY);
         }
         return doc;
@@ -214,12 +239,12 @@ public class DocumentService {
     }
 
     private void writeAudit(Long userId, String action, String targetType, String targetId) {
-        AuditLogEntity log = new AuditLogEntity();
-        log.setUserId(userId);
-        log.setAction(action);
-        log.setTargetType(targetType);
-        log.setTargetId(targetId);
-        log.setDetail(action);
-        auditLogMapper.insert(log);
+        AuditLogEntity audit = new AuditLogEntity();
+        audit.setUserId(userId);
+        audit.setAction(action);
+        audit.setTargetType(targetType);
+        audit.setTargetId(targetId);
+        audit.setDetail(action);
+        auditLogMapper.insert(audit);
     }
 }

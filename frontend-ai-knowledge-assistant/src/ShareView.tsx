@@ -36,7 +36,10 @@ function ShareView({ kind, token, onClose }: ShareViewProps) {
           if (alive) setDocument(data)
         }
       } catch (err) {
-        if (alive) setError(err instanceof Error ? err.message : '分享内容加载失败')
+        if (alive) {
+          const msg = err instanceof Error ? err.message : '分享内容加载失败'
+          setError(msg === '系统错误' ? '暂无数据' : msg)
+        }
       } finally {
         if (alive) setLoading(false)
       }
@@ -45,6 +48,8 @@ function ShareView({ kind, token, onClose }: ShareViewProps) {
       alive = false
     }
   }, [kind, token])
+
+  const messages = session?.messages || []
 
   return (
     <div className="sharePage">
@@ -65,7 +70,8 @@ function ShareView({ kind, token, onClose }: ShareViewProps) {
             <h2>{session?.title || '未命名会话'}</h2>
             <p className="shareMeta">范围：{session?.scope || '—'}</p>
             <div className="shareMessages">
-              {(session?.messages || []).map((m, i) => (
+              {messages.length === 0 ? <p className="shareMeta">暂无数据</p> : null}
+              {messages.map((m, i) => (
                 <article key={i} className={`shareMsg shareMsg-${m.role || 'assistant'}`}>
                   <strong>{m.role === 'user' ? '用户' : '助手'}</strong>
                   <p>{m.content}</p>

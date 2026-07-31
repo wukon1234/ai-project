@@ -18,11 +18,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 /** 阅读器 AI：页摘要缓存、同文档相关片段检索。 */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DocumentAiService {
@@ -59,6 +61,7 @@ public class DocumentAiService {
         String summary;
         if (!StringUtils.hasText(pageText)) {
             summary = "本页暂无可摘要文本";
+            log.info("page summary empty text, docId={}, pageNo={}", docId, pageNo);
         } else {
             summary = buildExtractiveSummary(pageText);
         }
@@ -95,8 +98,10 @@ public class DocumentAiService {
             for (KbChunkEntity c : others) {
                 fallback.add(toRelated(doc, c));
             }
+            log.info("related chunks fallback, docId={}, pageNo={}, count={}", docId, seedPage, fallback.size());
             return fallback;
         }
+        log.info("related chunks hit, docId={}, pageNo={}, count={}", docId, seedPage, hits.size());
         return hits.stream().map(h -> toRelated(doc, h.getChunk())).collect(Collectors.toList());
     }
 

@@ -42,7 +42,10 @@ function HelpPage({ onBack, onAsk, onOpenSearch }: HelpPageProps) {
         const list = await listFaqs('zh-CN')
         if (alive && Array.isArray(list) && list.length) setFaqs(list)
       } catch (err) {
-        if (alive) setError(err instanceof Error ? err.message : 'FAQ 加载失败，已显示本地文案')
+        if (alive) {
+          const msg = err instanceof Error ? err.message : ''
+          setError(msg === '系统错误' ? '暂无云端 FAQ，已显示本地说明' : msg || 'FAQ 加载失败，已显示本地文案')
+        }
       }
     })()
     return () => {

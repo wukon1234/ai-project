@@ -6,12 +6,15 @@ import com.zhishiyun.kb.auth.dto.LoginRequest;
 import com.zhishiyun.kb.auth.dto.RefreshRequest;
 import com.zhishiyun.kb.auth.dto.RegisterRequest;
 import com.zhishiyun.kb.auth.dto.ResetPasswordRequest;
+import com.zhishiyun.kb.common.BizException;
+import com.zhishiyun.kb.common.ErrorCode;
 import com.zhishiyun.kb.common.Result;
 import java.io.IOException;
 import java.util.Map;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 账号鉴权 API：登录注册、JWT 刷新、SSO、忘记密码。 */
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -31,18 +35,21 @@ public class AuthController {
     /** 邮箱/手机号登录。 */
     @PostMapping("/login")
     public Result<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        log.info("login attempt, account={}", request.getAccount());
         return Result.ok(authService.login(request));
     }
 
     /** 企业邮箱注册。 */
     @PostMapping("/register")
     public Result<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+        log.info("register attempt, email={}", request.getEmail());
         return Result.ok(authService.register(request));
     }
 
     /** 刷新 access token。 */
     @PostMapping("/refresh")
     public Result<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request) {
+        log.debug("token refresh");
         return Result.ok(authService.refresh(request));
     }
 
@@ -50,12 +57,17 @@ public class AuthController {
     @PostMapping("/logout")
     public Result<Void> logout(@RequestBody(required = false) Map<String, String> payload) {
         authService.logout(payload == null ? null : payload.get("refreshToken"));
+        log.info("logout completed");
         return Result.ok(null);
     }
 
     /** 当前用户资料。 */
     @GetMapping("/me")
     public Result<AuthResponse> me(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof AuthUser)) {
+            log.warn("/me called without valid principal");
+            throw new BizException(ErrorCode.UNAUTHORIZED);
+        }
         AuthUser principal = (AuthUser) authentication.getPrincipal();
         return Result.ok(authService.me(principal.getUserId()));
     }
@@ -63,6 +75,7 @@ public class AuthController {
     /** SSO：重定向到 Azure AD（或 mock callback）。 */
     @GetMapping("/sso/authorize")
     public void ssoAuthorize(HttpServletResponse response) throws IOException {
+        log.info("sso authorize redirect");
         response.sendRedirect(authService.buildSsoAuthorizeUrl());
     }
 
@@ -72,6 +85,7 @@ public class AuthController {
             @RequestParam("code") String code,
             @RequestParam(value = "state", required = false) String state,
             HttpServletResponse response) throws IOException {
+        log.info("sso callback received");
         AuthResponse auth = authService.ssoCallback(code);
         String base = authService.getSsoFrontendRedirect();
         if (base == null || base.trim().isEmpty()) {

@@ -81,7 +81,11 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
         if (!alive) return
         setMeta(m)
         setBookmarked(Boolean(m.favorited))
-        await viewDocument(doc.id, { pageNo: doc.page, eventType: 'OPEN_SOURCE' })
+        try {
+          await viewDocument(doc.id, { pageNo: doc.page, eventType: 'OPEN_SOURCE' })
+        } catch {
+          // 浏览埋点失败不影响阅读
+        }
         try {
           const url = await fetchDocumentBlobUrl(doc.id)
           if (!alive) {
@@ -94,7 +98,10 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
           // 无文件时保留文本预览兜底
         }
       } catch (err) {
-        if (alive) setLoadError(err instanceof Error ? err.message : '加载文档失败')
+        if (alive) {
+          const msg = err instanceof Error ? err.message : '加载文档失败'
+          setLoadError(msg === '系统错误' ? '暂无数据' : msg)
+        }
       }
     })()
     return () => {
@@ -130,12 +137,11 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
           setPageSummary({
             pageNo: page,
             knowledgeBase,
-            summary: err instanceof Error ? err.message : '摘要加载失败',
+            summary: '本页暂无摘要',
             cached: false,
           })
         } else {
           setRelated([])
-          setAskHint(err instanceof Error ? err.message : '相关片段加载失败')
         }
       } finally {
         if (alive) setAiLoading(false)
@@ -168,7 +174,10 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
             : `回答完成 · ${done.elapsedMs ?? 0}ms`,
         )
       },
-      onError: (err) => setAskHint(err.message || '同文档问答失败'),
+      onError: (err) =>
+        setAskHint(
+          !err.message || err.message === '系统错误' ? '暂无数据' : err.message || '同文档问答失败',
+        ),
     })
     setAskBusy(false)
   }
@@ -192,7 +201,7 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
       await downloadDocument(doc.id, `${title}.pdf`)
       setAskHint('开始下载文档')
     } catch (err) {
-      setAskHint(err instanceof Error ? err.message : '下载失败')
+      setAskHint(err instanceof Error ? (err.message === '系统错误' ? '暂无原文文件' : err.message) : '下载失败')
     }
   }
 

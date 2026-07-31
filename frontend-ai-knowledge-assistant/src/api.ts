@@ -303,7 +303,16 @@ export async function downloadDocument(id: number | string, filename?: string) {
   const resp = await fetch(`${API_BASE}/api/v1/documents/${id}/file?download=true`, {
     headers: authHeaders(false),
   })
-  if (!resp.ok) throw new Error('下载失败')
+  if (!resp.ok) {
+    let message = '暂无原文文件'
+    try {
+      const json = (await resp.json()) as ApiResult<unknown>
+      if (json.message && json.message !== '系统错误') message = json.message
+    } catch {
+      // ignore
+    }
+    throw new Error(message)
+  }
   const blob = await resp.blob()
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -317,7 +326,16 @@ export async function fetchDocumentBlobUrl(id: number | string) {
   const resp = await fetch(`${API_BASE}/api/v1/documents/${id}/file`, {
     headers: authHeaders(false),
   })
-  if (!resp.ok) throw new Error('加载原文失败')
+  if (!resp.ok) {
+    let message = '暂无原文文件'
+    try {
+      const json = (await resp.json()) as ApiResult<unknown>
+      if (json.message && json.message !== '系统错误') message = json.message
+    } catch {
+      // ignore
+    }
+    throw new Error(message)
+  }
   const blob = await resp.blob()
   return URL.createObjectURL(blob)
 }

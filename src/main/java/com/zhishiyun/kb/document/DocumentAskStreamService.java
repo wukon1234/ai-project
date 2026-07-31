@@ -2,6 +2,7 @@ package com.zhishiyun.kb.document;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zhishiyun.kb.common.BizException;
 import com.zhishiyun.kb.infra.mysql.entity.KbChunkEntity;
 import com.zhishiyun.kb.infra.mysql.entity.KbDocumentEntity;
 import com.zhishiyun.kb.infra.mysql.entity.KbLibraryEntity;
@@ -98,9 +99,22 @@ public class DocumentAskStreamService {
             writeUsage(userId, doc, question);
             emitter.complete();
         } catch (Exception e) {
+            if (e instanceof BizException) {
+                BizException biz = (BizException) e;
+                log.warn("document ask stream biz error, doc={}, code={}, msg={}", docId, biz.getCode(), biz.getMessage());
+                try {
+                    send(emitter, "error", mapOf("code", biz.getCode(), "message", biz.getMessage()));
+                } catch (Exception ignored) {
+                }
+                emitter.complete();
+                return;
+            }
             log.error("document ask stream failed, doc={}", docId, e);
             try {
-                send(emitter, "error", mapOf("code", 50001, "message", e.getMessage()));
+                String msg = e.getMessage() == null || e.getMessage().trim().isEmpty()
+                        ? "暂无数据"
+                        : e.getMessage();
+                send(emitter, "error", mapOf("code", 50001, "message", msg));
             } catch (Exception ignored) {
             }
             emitter.completeWithError(e);

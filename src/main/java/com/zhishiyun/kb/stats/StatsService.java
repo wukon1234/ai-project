@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -36,6 +37,7 @@ import org.springframework.util.StringUtils;
 /**
  * 使用统计聚合：基于 usage_event / 反馈 / 收藏表计算 KPI、趋势、分布等。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class StatsService {
@@ -64,11 +66,11 @@ public class StatsService {
         double askMom = prevAsk == 0 ? (askCount > 0 ? 100D : 0D)
                 : ((askCount - prevAsk) * 100D / prevAsk);
 
-        long favDoc = favDocumentMapper.selectCount(new LambdaQueryWrapper<FavDocumentEntity>()
-                .eq(FavDocumentEntity::getUserId, userId));
-        long favAns = favAnswerMapper.selectCount(new LambdaQueryWrapper<FavAnswerEntity>()
-                .eq(FavAnswerEntity::getUserId, userId));
-        long favTotal = (favDoc == 0 ? 0 : favDoc) + (favAns == 0 ? 0 : favAns);
+        long favDoc = nullToZero(favDocumentMapper.selectCount(new LambdaQueryWrapper<FavDocumentEntity>()
+                .eq(FavDocumentEntity::getUserId, userId)));
+        long favAns = nullToZero(favAnswerMapper.selectCount(new LambdaQueryWrapper<FavAnswerEntity>()
+                .eq(FavAnswerEntity::getUserId, userId)));
+        long favTotal = favDoc + favAns;
         LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
         long favMonthNew = countType(loadEvents(userId, monthStart, LocalDateTime.now()), "FAVORITE");
 
@@ -103,6 +105,8 @@ public class StatsService {
         sourceHabit.put("readCompleteCount", countType(events, "READ_COMPLETE"));
         sourceHabit.put("avgReadMinutes", avgReadMinutes(events));
         data.put("sourceHabit", sourceHabit);
+        log.info("stats overview, userId={}, range={}, askCount={}, events={}",
+                userId, window.rangeLabel, askCount, events.size());
         return data;
     }
 
@@ -128,6 +132,7 @@ public class StatsService {
             writer.flush();
             return bos.toByteArray();
         } catch (Exception e) {
+            log.error("stats csv export failed, userId={}, range={}", userId, range, e);
             throw new BizException(ErrorCode.SYSTEM_ERROR, "导出失败");
         }
     }
@@ -394,6 +399,10 @@ public class StatsService {
 
     private double round1(double v) {
         return Math.round(v * 10D) / 10D;
+    }
+
+    private long nullToZero(Long value) {
+        return value == null ? 0L : value;
     }
 
     private static class RangeWindow {

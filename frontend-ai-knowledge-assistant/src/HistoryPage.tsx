@@ -66,7 +66,9 @@ function HistoryPage({ onContinue, onAskFirst, onBack }: HistoryPageProps) {
       setItems((list || []).map(mapItem))
     } catch (err) {
       setItems([])
-      setError(err instanceof Error ? err.message : '加载历史失败')
+      const msg = err instanceof Error ? err.message : '加载历史失败'
+      // 无数据或系统兜底错误时走空态，避免误报「系统错误」
+      if (msg !== '系统错误') setError(msg)
     } finally {
       setLoading(false)
     }

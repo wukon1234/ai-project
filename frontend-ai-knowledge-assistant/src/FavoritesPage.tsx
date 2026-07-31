@@ -72,7 +72,9 @@ function FavoritesPage({ onBack, onRead, onAsk }: FavoritesPageProps) {
       setDocs((d || []).map(mapDoc))
       setAnswers((a || []).map(mapAnswer))
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载收藏失败')
+      const msg = err instanceof Error ? err.message : '加载收藏失败'
+      // 无数据场景走空态文案，不展示「系统错误」
+      if (msg !== '系统错误') setError(msg)
     } finally {
       setLoading(false)
     }

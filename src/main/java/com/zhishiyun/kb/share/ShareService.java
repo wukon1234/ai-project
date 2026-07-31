@@ -20,11 +20,13 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 会话 / 文档分享只读访问。 */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ShareService {
@@ -52,6 +54,7 @@ public class ShareService {
         Map<String, Object> data = new LinkedHashMap<String, Object>();
         data.put("shareToken", token);
         data.put("shareUrl", trimSlash(shareBaseUrl) + "/?view=share-session&token=" + token);
+        log.info("session share created, userId={}, sessionId={}", userId, sessionId);
         return data;
     }
 
@@ -62,6 +65,7 @@ public class ShareService {
                 .eq(ChatSessionEntity::getDeleted, 0)
                 .last("limit 1"));
         if (session == null) {
+            log.warn("shared session not found for token");
             throw new BizException(ErrorCode.PARAM_INVALID, "分享会话不存在");
         }
         List<ChatMessageEntity> messages = chatMessageMapper.selectList(new LambdaQueryWrapper<ChatMessageEntity>()
@@ -78,6 +82,7 @@ public class ShareService {
             return row;
         }).collect(Collectors.toList()));
         data.put("requireLogin", requireLogin);
+        log.info("shared session read, sessionId={}, messageCount={}", session.getId(), messages.size());
         return data;
     }
 
@@ -86,6 +91,7 @@ public class ShareService {
         Long docId = documentService.resolveSharedDocId(token);
         KbDocumentEntity doc = kbDocumentMapper.selectById(docId);
         if (doc == null) {
+            log.warn("shared document not found, docId={}", docId);
             throw new BizException(ErrorCode.PARAM_INVALID, "分享文档不存在");
         }
         Map<String, Object> data = new LinkedHashMap<String, Object>();
@@ -96,18 +102,19 @@ public class ShareService {
         data.put("summary", doc.getSummary());
         data.put("fileType", doc.getFileType());
         data.put("requireLogin", requireLogin);
+        log.info("shared document read, docId={}", docId);
         return data;
     }
 
     /** 写入分享相关审计日志。 */
     private void writeAudit(Long userId, String action, String targetType, String targetId) {
-        AuditLogEntity log = new AuditLogEntity();
-        log.setUserId(userId);
-        log.setAction(action);
-        log.setTargetType(targetType);
-        log.setTargetId(targetId);
-        log.setDetail(action);
-        auditLogMapper.insert(log);
+        AuditLogEntity audit = new AuditLogEntity();
+        audit.setUserId(userId);
+        audit.setAction(action);
+        audit.setTargetType(targetType);
+        audit.setTargetId(targetId);
+        audit.setDetail(action);
+        auditLogMapper.insert(audit);
     }
 
     private String trimSlash(String url) {

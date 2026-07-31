@@ -68,7 +68,11 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
         })
         if (alive) setData(overview)
       } catch (err) {
-        if (alive) showToast(err instanceof Error ? err.message : '统计加载失败')
+        if (alive) {
+          setData(null)
+          const msg = err instanceof Error ? err.message : '统计加载失败'
+          showToast(msg === '系统错误' ? '暂无数据' : msg)
+        }
       } finally {
         if (alive) setLoading(false)
       }
@@ -80,6 +84,7 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
 
   const kpi = data?.kpi
   const askTrend = data?.askTrend || []
+  const askTrendHasData = askTrend.some((d) => (d.count || 0) > 0)
   const kbItems = useMemo(() => {
     return (data?.libraryDistribution || []).map((item, i) => ({
       name: libName[item.libraryCode] || item.libraryCode,
@@ -112,6 +117,7 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
     }
     return grid.map((row) => row.map((c) => Math.min(4, Math.round((c / max) * 4))))
   }, [data])
+  const heatmapHasData = (data?.activeHeatmap || []).some((c) => (c.count || 0) > 0)
 
   function heatColor(level: number) {
     const palette = ['#E5E7EB', '#BFDBFE', '#93C5FD', '#3B82F6', '#1D4ED8']
@@ -245,21 +251,23 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
               </div>
             </div>
             <ul className="usTrendList">
-              {askTrend.length === 0 ? <li>暂无数据</li> : null}
-              {askTrend.slice(-14).map((d) => (
-                <li key={d.date}>
-                  <span>{d.date.slice(5)}</span>
-                  <div className="usTrendBarTrack">
-                    <div
-                      className="usTrendBarFill"
-                      style={{
-                        width: `${(d.count / Math.max(...askTrend.map((x) => x.count), 1)) * 100}%`,
-                      }}
-                    />
-                  </div>
-                  <em>{d.count}</em>
-                </li>
-              ))}
+              {!askTrendHasData ? <li>暂无数据</li> : null}
+              {askTrendHasData
+                ? askTrend.slice(-14).map((d) => (
+                    <li key={d.date}>
+                      <span>{d.date.slice(5)}</span>
+                      <div className="usTrendBarTrack">
+                        <div
+                          className="usTrendBarFill"
+                          style={{
+                            width: `${(d.count / Math.max(...askTrend.map((x) => x.count), 1)) * 100}%`,
+                          }}
+                        />
+                      </div>
+                      <em>{d.count}</em>
+                    </li>
+                  ))
+                : null}
             </ul>
           </article>
 
@@ -400,23 +408,26 @@ function UsageStatsPage({ onBack, onAskAgain }: UsageStatsPageProps) {
               </div>
             </div>
             <div className="usHeatWrap">
-              <div className="usHeatGrid">
-                {heatmap.map((row, wi) => (
-                  <div key={weekLabels[wi]} className="usHeatRow">
-                    <span className="usHeatDay">{weekLabels[wi]}</span>
-                    <div className="usHeatCells">
-                      {row.map((level, hi) => (
-                        <span
-                          key={`${wi}-${hi}`}
-                          className="usHeatCell"
-                          style={{ background: heatColor(level) }}
-                          title={`${weekLabels[wi]} ${hi}:00`}
-                        />
-                      ))}
+              {!heatmapHasData ? <p className="usKpiSub">暂无数据</p> : null}
+              {heatmapHasData ? (
+                <div className="usHeatGrid">
+                  {heatmap.map((row, wi) => (
+                    <div key={weekLabels[wi]} className="usHeatRow">
+                      <span className="usHeatDay">{weekLabels[wi]}</span>
+                      <div className="usHeatCells">
+                        {row.map((level, hi) => (
+                          <span
+                            key={`${wi}-${hi}`}
+                            className="usHeatCell"
+                            style={{ background: heatColor(level) }}
+                            title={`${weekLabels[wi]} ${hi}:00`}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </article>
 

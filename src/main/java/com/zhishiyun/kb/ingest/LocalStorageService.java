@@ -11,6 +11,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 /** 本地文件存储：按 UUID 落盘，返回 storageKey。 */
@@ -37,6 +38,9 @@ public class LocalStorageService {
 
     /** 按 storageKey 定位本地文件。 */
     public File getFile(String key) {
+        if (!StringUtils.hasText(key)) {
+            throw new BizException(ErrorCode.BIZ_ERROR, "暂无原文文件");
+        }
         return Paths.get(localDir, key).toFile();
     }
 
