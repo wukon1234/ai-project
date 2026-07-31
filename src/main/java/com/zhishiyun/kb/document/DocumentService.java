@@ -21,7 +21,11 @@ import com.zhishiyun.kb.infra.mysql.mapper.UsageEventMapper;
 import com.zhishiyun.kb.ingest.LocalStorageService;
 import java.io.File;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +36,7 @@ public class DocumentService {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String CACHE_PREFIX = "doc:meta:";
+    private static final String DOC_SHARE_PREFIX = "share:doc:";
 
     private final KbDocumentMapper kbDocumentMapper;
     private final KbLibraryMapper kbLibraryMapper;
@@ -42,6 +47,15 @@ public class DocumentService {
     private final LocalStorageService localStorageService;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+
+    /** 文档分享链接过期小时数 */
+    @Value("${kb.share.doc-expire-hours:72}")
+    private int shareExpireHours;
+    /** 禁止外链的敏感知识库，逗号分隔 */
+    @Value("${kb.share.blocked-libraries:}")
+    private String shareBlockedLibraries;
+    @Value("${kb.share.base-url:http://localhost:8080}")
+    private String shareBaseUrl;
 
     public DocumentMetaResponse meta(Long userId, Long docId) {
         KbDocumentEntity doc = getPermittedDocument(userId, docId);
@@ -82,26 +96,79 @@ public class DocumentService {
         return localStorageService.getFile(doc.getStorageKey());
     }
 
+    /**
+     * 浏览量 +1，并写入 OPEN_SOURCE / READ_COMPLETE 埋点。
+     *
+     * @param eventType OPEN_SOURCE（点击来源）或 READ_COMPLETE（完整阅读）
+     * @param readMinutes 完整阅读时长（分钟），可选
+     */
     @Transactional
-    public Integer addView(Long userId, Long docId, Integer pageNo) {
+    public Integer addView(Long userId, Long docId, Integer pageNo, String eventType, Double readMinutes) {
         KbDocumentEntity doc = getPermittedDocument(userId, docId);
         int next = (doc.getViewCount() == null ? 0 : doc.getViewCount()) + 1;
         doc.setViewCount(next);
         kbDocumentMapper.updateById(doc);
         redisTemplate.delete(CACHE_PREFIX + docId);
+        String type = "READ_COMPLETE".equalsIgnoreCase(eventType) ? "READ_COMPLETE" : "OPEN_SOURCE";
+        StringBuilder extra = new StringBuilder("{");
+        if (pageNo != null) {
+            extra.append("\"pageNo\":").append(pageNo);
+        }
+        if (readMinutes != null) {
+            if (pageNo != null) {
+                extra.append(',');
+            }
+            extra.append("\"readMinutes\":").append(readMinutes);
+        }
+        extra.append('}');
         UsageEventEntity usage = new UsageEventEntity();
         usage.setUserId(userId);
-        usage.setEventType("VIEW_DOC");
+        usage.setEventType(type);
         usage.setLibraryCode(doc.getLibraryCode());
         usage.setRefId(String.valueOf(docId));
-        usage.setExtraJson(pageNo == null ? null : "{\"pageNo\":" + pageNo + "}");
+        usage.setExtraJson("{}".equals(extra.toString()) ? null : extra.toString());
         usageEventMapper.insert(usage);
         return next;
     }
 
-    public String share(Long userId, Long docId) {
-        getPermittedDocument(userId, docId);
-        return "https://example.local/documents/" + docId + "/share-token";
+    /**
+     * 生成文档分享短链；敏感库可按配置禁止外链。
+     */
+    public Map<String, Object> createShare(Long userId, Long docId) {
+        KbDocumentEntity doc = getPermittedDocument(userId, docId);
+        String blocked = shareBlockedLibraries;
+        if (blocked != null) {
+            for (String code : blocked.split(",")) {
+                if (code.trim().equalsIgnoreCase(doc.getLibraryCode())) {
+                    throw new BizException(ErrorCode.BIZ_ERROR, "该知识库禁止外链分享");
+                }
+            }
+        }
+        String token = UUID.randomUUID().toString().replace("-", "");
+        String payload = "{\"docId\":" + docId + ",\"userId\":" + userId + "}";
+        redisTemplate.opsForValue().set(DOC_SHARE_PREFIX + token, payload, java.time.Duration.ofHours(shareExpireHours));
+        writeAudit(userId, "SHARE_DOC", "document", String.valueOf(docId));
+        Map<String, Object> data = new HashMap<String, Object>();
+        data.put("shareToken", token);
+        data.put("shareUrl", shareBaseUrl + "/api/v1/share/documents/" + token);
+        data.put("expireHours", shareExpireHours);
+        return data;
+    }
+
+    /** 只读解析文档分享 token。 */
+    public Long resolveSharedDocId(String token) {
+        String payload = redisTemplate.opsForValue().get(DOC_SHARE_PREFIX + token);
+        if (payload == null || payload.isEmpty()) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "分享链接无效或已过期");
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = objectMapper.readValue(payload, Map.class);
+            Object docId = map.get("docId");
+            return Long.valueOf(String.valueOf(docId));
+        } catch (Exception e) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "分享链接无效");
+        }
     }
 
     public KbDocumentEntity getPermittedDocument(Long userId, Long docId) {

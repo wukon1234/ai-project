@@ -20,4 +20,6 @@ public class SysUserEntity extends BaseEntity {
     private String deptName;
     private String roleCode;
     private Integer status;
+    /** Azure AD oid，用于 SSO 绑定 */
+    private String ssoSubject;
 }

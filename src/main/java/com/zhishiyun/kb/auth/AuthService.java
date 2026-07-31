@@ -2,9 +2,11 @@ package com.zhishiyun.kb.auth;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zhishiyun.kb.auth.dto.AuthResponse;
+import com.zhishiyun.kb.auth.dto.ForgotPasswordRequest;
 import com.zhishiyun.kb.auth.dto.LoginRequest;
 import com.zhishiyun.kb.auth.dto.RefreshRequest;
 import com.zhishiyun.kb.auth.dto.RegisterRequest;
+import com.zhishiyun.kb.auth.dto.ResetPasswordRequest;
 import com.zhishiyun.kb.common.BizException;
 import com.zhishiyun.kb.common.ErrorCode;
 import com.zhishiyun.kb.infra.mysql.entity.AuditLogEntity;
@@ -18,24 +20,33 @@ import com.zhishiyun.kb.infra.mysql.mapper.SysRefreshTokenMapper;
 import com.zhishiyun.kb.infra.mysql.mapper.SysUserMapper;
 import com.zhishiyun.kb.infra.mysql.mapper.UserPreferenceMapper;
 import io.jsonwebtoken.Claims;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+    private static final String PWD_RESET_PREFIX = "pwd:reset:";
 
     private final SysUserMapper sysUserMapper;
     private final UserPreferenceMapper userPreferenceMapper;
@@ -45,11 +56,25 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
+    private final StringRedisTemplate redisTemplate;
 
     @Value("${auth.register.auto-approve:true}")
     private boolean autoApprove;
     @Value("${auth.register.company-email-suffixes:@company.com}")
     private String companyEmailSuffixes;
+
+    @Value("${kb.sso.enabled:false}")
+    private boolean ssoEnabled;
+    @Value("${kb.sso.mock-enabled:true}")
+    private boolean ssoMockEnabled;
+    @Value("${kb.sso.client-id:}")
+    private String ssoClientId;
+    @Value("${kb.sso.tenant:common}")
+    private String ssoTenant;
+    @Value("${kb.sso.redirect-uri:http://localhost:8080/api/v1/auth/sso/callback}")
+    private String ssoRedirectUri;
+    @Value("${kb.sso.frontend-redirect:http://localhost:5173/auth/callback}")
+    private String ssoFrontendRedirect;
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
@@ -214,5 +239,117 @@ public class AuthService {
     public Long parseUserId(String accessToken) {
         Claims claims = jwtService.parse(accessToken);
         return Long.valueOf(claims.getSubject());
+    }
+
+    /**
+     * 构造 Azure AD 授权 URL；无真实租户时 mock 模式直接指向本地 callback。
+     */
+    public String buildSsoAuthorizeUrl() {
+        if (ssoMockEnabled || !ssoEnabled || !StringUtils.hasText(ssoClientId)) {
+            return "/api/v1/auth/sso/callback?code=mock-sso-code&state=dev";
+        }
+        try {
+            String redirect = URLEncoder.encode(ssoRedirectUri, "UTF-8");
+            return "https://login.microsoftonline.com/" + ssoTenant
+                    + "/oauth2/v2.0/authorize?client_id=" + ssoClientId
+                    + "&response_type=code&redirect_uri=" + redirect
+                    + "&response_mode=query&scope=openid%20profile%20email&state=zhishiyun";
+        } catch (Exception e) {
+            throw new BizException(ErrorCode.SYSTEM_ERROR, "构造 SSO URL 失败");
+        }
+    }
+
+    /**
+     * SSO 回调：mock 或真实 code 换用户，绑定 sso_subject 后签发本地 JWT。
+     */
+    @Transactional
+    public AuthResponse ssoCallback(String code) {
+        if (!StringUtils.hasText(code)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "缺少 authorization code");
+        }
+        String subject;
+        String email;
+        String name;
+        if (ssoMockEnabled || "mock-sso-code".equals(code)) {
+            subject = "mock-oid-zhangming";
+            email = "zhangming@company.com";
+            name = "张明(SSO)";
+        } else {
+            // 真实环境应调用 Azure token endpoint；此处保留扩展点
+            throw new BizException(ErrorCode.BIZ_ERROR, "未开启 mock 且未配置真实 SSO token 交换");
+        }
+        SysUserEntity user = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUserEntity>()
+                .eq(SysUserEntity::getSsoSubject, subject)
+                .last("limit 1"));
+        if (user == null) {
+            user = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUserEntity>()
+                    .eq(SysUserEntity::getEmail, email)
+                    .last("limit 1"));
+        }
+        if (user == null) {
+            user = new SysUserEntity();
+            user.setName(name);
+            user.setEmail(email);
+            user.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
+            user.setRoleCode("EMPLOYEE");
+            user.setDeptName("SSO");
+            user.setEmpNo("SSO");
+            user.setStatus(1);
+            user.setSsoSubject(subject);
+            sysUserMapper.insert(user);
+            UserPreferenceEntity preference = new UserPreferenceEntity();
+            preference.setUserId(user.getId());
+            preference.setThemeMode("system");
+            preference.setNotifyKbUpdate(1);
+            preference.setNotifyMention(1);
+            preference.setDefaultKbScopes("[\"hr\",\"product\"]");
+            userPreferenceMapper.insert(preference);
+        } else if (!StringUtils.hasText(user.getSsoSubject())) {
+            user.setSsoSubject(subject);
+            sysUserMapper.updateById(user);
+        }
+        writeAudit(user.getId(), "SSO_LOGIN");
+        return buildTokens(user, false);
+    }
+
+    public String getSsoFrontendRedirect() {
+        return ssoFrontendRedirect;
+    }
+
+    /**
+     * 忘记密码：生成一次性 token 写入 Redis（30 分钟），邮件发送 stub 为日志输出。
+     */
+    public Map<String, Object> forgotPassword(ForgotPasswordRequest request) {
+        SysUserEntity user = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUserEntity>()
+                .eq(SysUserEntity::getEmail, request.getEmail())
+                .last("limit 1"));
+        Map<String, Object> data = new HashMap<String, Object>();
+        data.put("accepted", true);
+        // 防枚举：即使用户不存在也返回成功
+        if (user == null) {
+            return data;
+        }
+        String token = UUID.randomUUID().toString().replace("-", "");
+        redisTemplate.opsForValue().set(PWD_RESET_PREFIX + token, String.valueOf(user.getId()), 30, TimeUnit.MINUTES);
+        String resetLink = "/api/v1/auth/password/reset?token=" + token;
+        log.info("[password-reset] email={} resetLink={}", request.getEmail(), resetLink);
+        data.put("devResetToken", token);
+        return data;
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        String userId = redisTemplate.opsForValue().get(PWD_RESET_PREFIX + request.getToken());
+        if (!StringUtils.hasText(userId)) {
+            throw new BizException(ErrorCode.BIZ_ERROR, "重置令牌无效或已过期");
+        }
+        SysUserEntity user = sysUserMapper.selectById(Long.valueOf(userId));
+        if (user == null) {
+            throw new BizException(ErrorCode.BIZ_ERROR, "用户不存在");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        sysUserMapper.updateById(user);
+        redisTemplate.delete(PWD_RESET_PREFIX + request.getToken());
+        writeAudit(user.getId(), "PASSWORD_RESET");
     }
 }

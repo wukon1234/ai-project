@@ -12,3 +12,12 @@ kb:
     secret: dev-secret-dev-secret-dev-secret
   internal:
     api-key: internal-dev-key
+  rag:
+    hybrid-enabled: true
+  vision:
+    enabled: true
+  sso:
+    mock-enabled: true
+  rate-limit:
+    enabled: true
+    ask-per-minute: 10

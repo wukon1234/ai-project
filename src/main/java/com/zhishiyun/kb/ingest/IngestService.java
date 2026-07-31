@@ -49,6 +49,7 @@ public class IngestService {
     private final StringRedisTemplate redisTemplate;
     private final JavaOcrService javaOcrService;
     private final KbPageVisionMapper kbPageVisionMapper;
+    private final VisionClient visionClient;
 
     @Transactional
     public IngestUploadResponse upload(MultipartFile file, String libraryCode, String title, String category) {
@@ -146,6 +147,7 @@ public class IngestService {
 
     private List<PageText> extractPdf(Long docId, File pdf, IngestTaskEntity task) throws IOException {
         List<PageText> pages = new ArrayList<PageText>();
+        int visionUsed = 0;
         try (PDDocument document = PDDocument.load(pdf)) {
             PDFTextStripper stripper = new PDFTextStripper();
             PDFRenderer renderer = new PDFRenderer(document);
@@ -156,14 +158,32 @@ public class IngestService {
                 stripper.setEndPage(i);
                 String text = normalize(stripper.getText(document));
                 Double confidence = null;
+                BufferedImage image = null;
                 if (!StringUtils.hasText(text) || text.length() < 20) {
-                    BufferedImage image = renderer.renderImageWithDPI(i - 1, 172);
+                    image = renderer.renderImageWithDPI(i - 1, 172);
                     JavaOcrService.OcrResult ocr = javaOcrService.recognize(image);
                     text = normalize(ocr.getText());
                     confidence = ocr.getConfidence();
                 }
+                // 低置信度页标记 NEED_VISION，并按配额调用 Vision
                 if (confidence != null && confidence < 0.75) {
-                    saveVisionMark(docId, pdf.getName(), i, text, confidence);
+                    markNeedVision(docId, i);
+                    if (visionClient.isEnabled() && visionUsed < visionClient.getMaxPagesPerDoc()) {
+                        if (image == null) {
+                            image = renderer.renderImageWithDPI(i - 1, 172);
+                        }
+                        VisionClient.VisionResult vr = visionClient.describe(image, text, i);
+                        if (vr != null && StringUtils.hasText(vr.getText())) {
+                            saveVisionResult(docId, i, vr, "DONE");
+                            // Vision 文本优先参与分块
+                            text = normalize(vr.getText());
+                            visionUsed++;
+                        } else {
+                            saveVisionResult(docId, i, null, "FAILED");
+                        }
+                    } else {
+                        saveVisionMarkPending(docId, pdf.getName(), i, text, confidence);
+                    }
                 }
                 pages.add(new PageText(i, text));
                 processed++;
@@ -180,7 +200,18 @@ public class IngestService {
         JavaOcrService.OcrResult ocr = javaOcrService.recognize(image);
         String text = normalize(ocr.getText());
         if (ocr.getConfidence() != null && ocr.getConfidence() < 0.75) {
-            saveVisionMark(docId, imageFile.getName(), 1, text, ocr.getConfidence());
+            markNeedVision(docId, 1);
+            if (visionClient.isEnabled() && visionClient.getMaxPagesPerDoc() > 0) {
+                VisionClient.VisionResult vr = visionClient.describe(image, text, 1);
+                if (vr != null && StringUtils.hasText(vr.getText())) {
+                    saveVisionResult(docId, 1, vr, "DONE");
+                    text = normalize(vr.getText());
+                } else {
+                    saveVisionResult(docId, 1, null, "FAILED");
+                }
+            } else {
+                saveVisionMarkPending(docId, imageFile.getName(), 1, text, ocr.getConfidence());
+            }
         }
         pages.add(new PageText(1, text));
         return pages;
@@ -235,27 +266,73 @@ public class IngestService {
         return text == null ? "" : text.replace("\r", "").trim();
     }
 
-    private void saveVisionMark(Long docId, String fileName, int pageNo, String text, double confidence) {
-        KbPageVisionEntity v = kbPageVisionMapper.selectOne(new LambdaQueryWrapper<KbPageVisionEntity>()
-                .eq(KbPageVisionEntity::getDocId, docId)
-                .eq(KbPageVisionEntity::getPageNo, pageNo)
-                .last("limit 1"));
+    private void markNeedVision(Long docId, int pageNo) {
+        KbPageVisionEntity v = findVision(docId, pageNo);
         if (v == null) {
             v = new KbPageVisionEntity();
             v.setDocId(docId);
             v.setPageNo(pageNo);
             v.setNeedVision(1);
-            v.setVisionStatus("DONE");
+            v.setVisionStatus("PENDING");
+            kbPageVisionMapper.insert(v);
+        } else {
+            v.setNeedVision(1);
+            if (!"DONE".equals(v.getVisionStatus())) {
+                v.setVisionStatus("PENDING");
+            }
+            kbPageVisionMapper.updateById(v);
+        }
+    }
+
+    private void saveVisionResult(Long docId, int pageNo, VisionClient.VisionResult vr, String status) {
+        KbPageVisionEntity v = findVision(docId, pageNo);
+        if (v == null) {
+            v = new KbPageVisionEntity();
+            v.setDocId(docId);
+            v.setPageNo(pageNo);
+            v.setNeedVision(1);
+            v.setVisionStatus(status);
+            if (vr != null) {
+                v.setVisionText(truncate(vr.getText(), 8000));
+                v.setVisionSummary(truncate(vr.getSummary(), 500));
+            }
+            kbPageVisionMapper.insert(v);
+        } else {
+            v.setNeedVision(1);
+            v.setVisionStatus(status);
+            if (vr != null) {
+                v.setVisionText(truncate(vr.getText(), 8000));
+                v.setVisionSummary(truncate(vr.getSummary(), 500));
+            }
+            kbPageVisionMapper.updateById(v);
+        }
+    }
+
+    private void saveVisionMarkPending(Long docId, String fileName, int pageNo, String text, double confidence) {
+        KbPageVisionEntity v = findVision(docId, pageNo);
+        if (v == null) {
+            v = new KbPageVisionEntity();
+            v.setDocId(docId);
+            v.setPageNo(pageNo);
+            v.setNeedVision(1);
+            v.setVisionStatus("PENDING");
             v.setVisionText(truncate(text, 2000));
             v.setVisionSummary("low_confidence=" + confidence + ", file=" + fileName);
             kbPageVisionMapper.insert(v);
         } else {
             v.setNeedVision(1);
-            v.setVisionStatus("DONE");
+            v.setVisionStatus("PENDING");
             v.setVisionText(truncate(text, 2000));
             v.setVisionSummary("low_confidence=" + confidence + ", file=" + fileName);
             kbPageVisionMapper.updateById(v);
         }
+    }
+
+    private KbPageVisionEntity findVision(Long docId, int pageNo) {
+        return kbPageVisionMapper.selectOne(new LambdaQueryWrapper<KbPageVisionEntity>()
+                .eq(KbPageVisionEntity::getDocId, docId)
+                .eq(KbPageVisionEntity::getPageNo, pageNo)
+                .last("limit 1"));
     }
 
     @lombok.Data

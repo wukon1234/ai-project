@@ -5,9 +5,7 @@ import com.zhishiyun.kb.chat.dto.BatchDeleteRequest;
 import com.zhishiyun.kb.chat.dto.CreateSessionRequest;
 import com.zhishiyun.kb.chat.dto.UpdateScopeRequest;
 import com.zhishiyun.kb.common.Result;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import com.zhishiyun.kb.share.ShareService;
 import javax.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -27,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChatSessionController {
 
     private final ChatSessionService chatSessionService;
+    private final ShareService shareService;
 
     @PostMapping
     public Result<?> create(Authentication auth, @RequestBody(required = false) CreateSessionRequest request) {
@@ -76,9 +75,6 @@ public class ChatSessionController {
     @PostMapping("/{id}/share")
     public Result<?> share(Authentication auth, @PathVariable Long id) {
         AuthUser user = (AuthUser) auth.getPrincipal();
-        String shareUrl = chatSessionService.share(user.getUserId(), id);
-        Map<String, Object> data = new HashMap<String, Object>();
-        data.put("shareUrl", shareUrl);
-        return Result.ok(data);
+        return Result.ok(shareService.shareSession(user.getUserId(), id));
     }
 }

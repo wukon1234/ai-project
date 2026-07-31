@@ -20,6 +20,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final AskRateLimitFilter askRateLimitFilter;
     private final ObjectMapper objectMapper;
 
     @Bean
@@ -32,6 +33,10 @@ public class SecurityConfig {
                         "/api/v1/auth/login",
                         "/api/v1/auth/register",
                         "/api/v1/auth/refresh",
+                        "/api/v1/auth/sso/**",
+                        "/api/v1/auth/password/**",
+                        "/api/v1/share/**",
+                        "/api/v1/help/**",
                         "/api/v1/internal/**",
                         "/actuator/health/**",
                         "/doc.html",
@@ -48,6 +53,8 @@ public class SecurityConfig {
                             Result.fail(ErrorCode.UNAUTHORIZED.getCode(), ErrorCode.UNAUTHORIZED.getDefaultMessage())));
                 });
         http.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+        // 限流需在 JWT 鉴权之后，才能拿到 userId
+        http.addFilterAfter(askRateLimitFilter, JwtAuthFilter.class);
         return http.build();
     }
 

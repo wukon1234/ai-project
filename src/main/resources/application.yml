@@ -42,7 +42,7 @@ kb:
     local-dir: ${KB_STORAGE_LOCAL_DIR:data/storage}
   jwt:
     issuer: zhishiyun-kb
-    secret: ${KB_JWT_SECRET:change-this-secret-change-this-secret}
+    secret: ${KB_JWT_SECRET:changethissecretchangethissecret}
     access-token-minutes: ${KB_JWT_ACCESS_MINUTES:120}
     refresh-token-days: ${KB_JWT_REFRESH_DAYS:7}
     refresh-token-remember-days: ${KB_JWT_REFRESH_REMEMBER_DAYS:30}
@@ -77,10 +77,39 @@ kb:
   rag:
     score-threshold: ${KB_RAG_SCORE_THRESHOLD:0.45}
     context-n: ${KB_RAG_CONTEXT_N:6}
+    hybrid-enabled: ${KB_RAG_HYBRID_ENABLED:false}
+  vision:
+    enabled: ${KB_VISION_ENABLED:false}
+    model: ${KB_VISION_MODEL:gpt-4o}
+    endpoint: ${KB_VISION_ENDPOINT:https://api.openai.com/v1}
+    api-key: ${KB_VISION_API_KEY:}
+    max-pages-per-doc: ${KB_VISION_MAX_PAGES:3}
+  stats:
+    minutes-saved-per-ask: ${KB_STATS_MINUTES_PER_ASK:4}
+  share:
+    base-url: ${KB_SHARE_BASE_URL:http://localhost:8080}
+    doc-expire-hours: ${KB_SHARE_DOC_EXPIRE_HOURS:72}
+    blocked-libraries: ${KB_SHARE_BLOCKED_LIBRARIES:}
+    require-login: ${KB_SHARE_REQUIRE_LOGIN:false}
+  rate-limit:
+    enabled: ${KB_RATE_LIMIT_ENABLED:true}
+    ask-per-minute: ${KB_RATE_LIMIT_ASK_PER_MINUTE:10}
+  sso:
+    enabled: ${KB_SSO_ENABLED:false}
+    mock-enabled: ${KB_SSO_MOCK_ENABLED:true}
+    client-id: ${KB_SSO_CLIENT_ID:}
+    client-secret: ${KB_SSO_CLIENT_SECRET:}
+    tenant: ${KB_SSO_TENANT:common}
+    redirect-uri: ${KB_SSO_REDIRECT_URI:http://localhost:8080/api/v1/auth/sso/callback}
+    frontend-redirect: ${KB_SSO_FRONTEND_REDIRECT:http://localhost:5173/auth/callback}
 
 auth:
   register:
     auto-approve: ${KB_REGISTER_AUTO_APPROVE:true}
     company-email-suffixes: ${KB_REGISTER_EMAIL_SUFFIXES:@company.com}
+
+logging:
+  pattern:
+    level: "%5p [traceId=%X{traceId:-}]"
 
 

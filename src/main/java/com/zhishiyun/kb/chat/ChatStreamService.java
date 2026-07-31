@@ -16,6 +16,8 @@ import com.zhishiyun.kb.infra.mysql.mapper.ChatMessageMapper;
 import com.zhishiyun.kb.infra.mysql.mapper.ChatSessionMapper;
 import com.zhishiyun.kb.infra.mysql.mapper.KbDocumentMapper;
 import com.zhishiyun.kb.infra.mysql.mapper.KbLibraryMapper;
+import com.zhishiyun.kb.common.UsageEventService;
+import com.zhishiyun.kb.config.TraceIdFilter;
 import com.zhishiyun.kb.rag.VectorSearchService;
 import com.zhishiyun.kb.rag.VectorSearchService.SearchHit;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,6 +30,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,6 +50,7 @@ public class ChatStreamService {
     private final BizContactMapper bizContactMapper;
     private final LibraryAccessService libraryAccessService;
     private final VectorSearchService vectorSearchService;
+    private final UsageEventService usageEventService;
     private final ObjectMapper objectMapper;
 
     @Value("${kb.rag.score-threshold:0.45}")
@@ -76,7 +80,16 @@ public class ChatStreamService {
             }
             chatSessionMapper.updateById(session);
 
-            send(emitter, "meta", mapOf("messageId", String.valueOf(userMsg.getId()), "status", "SEARCHING"));
+            // 埋点 ASK，供统计页聚合
+            String scopeCode = session.getScope() == null ? "all" : session.getScope().split(",")[0];
+            usageEventService.track(userId, "ASK", scopeCode, String.valueOf(userMsg.getId()),
+                    "{\"question\":\"" + (question == null ? "" : question.replace("\"", "'")) + "\"}");
+
+            String traceId = MDC.get(TraceIdFilter.MDC_KEY);
+            send(emitter, "meta", mapOf(
+                    "messageId", String.valueOf(userMsg.getId()),
+                    "status", "SEARCHING",
+                    "traceId", traceId == null ? "" : traceId));
             Set<String> scopes = libraryAccessService.resolveScopes(userId, session.getScope());
             List<SearchHit> hits = vectorSearchService.search(question, scopes, 20);
 
