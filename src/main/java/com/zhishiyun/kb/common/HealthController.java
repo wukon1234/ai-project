@@ -18,6 +18,15 @@ public class HealthController {
 
     private final KbLibraryMapper kbLibraryMapper;
 
+    /** 应用存活探测（不依赖中间件）。 */
+    @GetMapping
+    public Result<Map<String, Object>> health() {
+        Map<String, Object> data = new HashMap<String, Object>();
+        data.put("status", "UP");
+        data.put("service", "kb-backend");
+        return Result.ok(data);
+    }
+
     /** 探测数据库连通性（查知识库表计数）。 */
     @GetMapping("/db")
     public Result<Map<String, Object>> db() {

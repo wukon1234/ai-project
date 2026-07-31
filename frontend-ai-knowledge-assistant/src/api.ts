@@ -32,7 +32,8 @@ export type RegisterPayload = {
   password: string
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+// 开发环境走 Vite 代理（见 vite.config.ts）；生产可设 VITE_API_BASE_URL
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
 const ACCESS_TOKEN_KEY = 'zn-access-token'
 const REFRESH_TOKEN_KEY = 'zn-refresh-token'
 

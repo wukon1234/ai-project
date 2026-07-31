@@ -123,6 +123,17 @@ public class AuthService {
         preference.setDefaultKbScopes("[\"hr\",\"product\"]");
         userPreferenceMapper.insert(preference);
 
+        // 默认可读 hr/product，与 preference 保持一致
+        for (String code : new String[] {"hr", "product"}) {
+            KbAclEntity acl = new KbAclEntity();
+            acl.setUserId(user.getId());
+            acl.setLibraryCode(code);
+            acl.setLibraryId("hr".equals(code) ? 2L : 1L);
+            acl.setPerm("READ");
+            acl.setCreatedAt(LocalDateTime.now());
+            kbAclMapper.insert(acl);
+        }
+
         if (!autoApprove) {
             throw new BizException(ErrorCode.BIZ_ERROR, "注册成功，待审核后可登录");
         }
@@ -185,6 +196,7 @@ public class AuthService {
         tokenEntity.setTokenHash(sha256(refreshToken));
         tokenEntity.setRememberMe(rememberMe ? 1 : 0);
         tokenEntity.setRevoked(0);
+        tokenEntity.setCreatedAt(LocalDateTime.now());
         tokenEntity.setExpireAt(LocalDateTime.now().plusDays(rememberMe
                 ? jwtProperties.getRefreshTokenRememberDays()
                 : jwtProperties.getRefreshTokenDays()));
@@ -221,6 +233,7 @@ public class AuthService {
         log.setTargetType("auth");
         log.setTargetId(String.valueOf(userId));
         log.setDetail(action);
+        log.setCreatedAt(LocalDateTime.now());
         auditLogMapper.insert(log);
     }
 

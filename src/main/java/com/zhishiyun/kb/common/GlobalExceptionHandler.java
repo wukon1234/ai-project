@@ -3,6 +3,7 @@ package com.zhishiyun.kb.common;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -17,8 +18,26 @@ public class GlobalExceptionHandler {
         return Result.fail(ex.getCode(), ex.getMessage());
     }
 
-    @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class, HttpMessageNotReadableException.class})
-    public Result<Void> handleValidationException(Exception ex) {
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public Result<Void> handleMethodArgumentNotValid(MethodArgumentNotValidException ex) {
+        FieldError fieldError = ex.getBindingResult().getFieldError();
+        String message = fieldError != null && fieldError.getDefaultMessage() != null
+                ? fieldError.getDefaultMessage()
+                : ErrorCode.PARAM_INVALID.getDefaultMessage();
+        return Result.fail(ErrorCode.PARAM_INVALID.getCode(), message);
+    }
+
+    @ExceptionHandler(BindException.class)
+    public Result<Void> handleBindException(BindException ex) {
+        FieldError fieldError = ex.getBindingResult().getFieldError();
+        String message = fieldError != null && fieldError.getDefaultMessage() != null
+                ? fieldError.getDefaultMessage()
+                : ErrorCode.PARAM_INVALID.getDefaultMessage();
+        return Result.fail(ErrorCode.PARAM_INVALID.getCode(), message);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public Result<Void> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
         return Result.fail(ErrorCode.PARAM_INVALID.getCode(), ErrorCode.PARAM_INVALID.getDefaultMessage());
     }
 
