@@ -162,7 +162,9 @@ function KnowledgeSearch({ onAsk, onRead, onAskAboutDoc }: KnowledgeSearchProps)
         if (!alive) return
         setResults([])
         setTotal(0)
-        setError(err instanceof Error ? err.message : '搜索失败')
+        const msg = err instanceof Error ? err.message : '搜索失败'
+        // 无数据或后端兜底错误时走空态，避免误报「系统错误」
+        if (msg !== '系统错误') setError(msg)
       } finally {
         if (alive) setLoading(false)
       }

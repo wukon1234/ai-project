@@ -95,11 +95,14 @@ public class SearchService {
                 redisTemplate.opsForZSet().incrementScore("search:hot", q, 1D);
             } catch (Exception ignored) {
             }
-            UsageEventEntity usage = new UsageEventEntity();
-            usage.setUserId(userId);
-            usage.setEventType("SEARCH");
-            usage.setRefId(q);
-            usageEventMapper.insert(usage);
+            try {
+                UsageEventEntity usage = new UsageEventEntity();
+                usage.setUserId(userId);
+                usage.setEventType("SEARCH");
+                usage.setRefId(q);
+                usageEventMapper.insert(usage);
+            } catch (Exception ignored) {
+            }
         }
         Map<String, Object> data = pageResult(page, size, list);
         data.put("total", rows.size());

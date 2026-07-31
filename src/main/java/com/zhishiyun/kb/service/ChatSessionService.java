@@ -35,7 +35,12 @@ public class ChatSessionService {
         ChatSessionEntity session = new ChatSessionEntity();
         session.setUserId(userId);
         if (scope == null || scope.trim().isEmpty()) {
-            List<String> defaults = profileService.defaultScopes(userId);
+            List<String> defaults = java.util.Collections.emptyList();
+            try {
+                defaults = profileService.defaultScopes(userId);
+            } catch (Exception ignored) {
+                // 偏好读取失败时回退默认 scope，避免创建会话整体失败
+            }
             session.setScope(defaults.isEmpty() ? "hr" : String.join(",", defaults));
         } else {
             session.setScope(scope);
@@ -43,6 +48,9 @@ public class ChatSessionService {
         session.setTitle("新对话");
         session.setMessageCount(0);
         session.setDeleted(0);
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        session.setCreatedAt(now);
+        session.setUpdatedAt(now);
         chatSessionMapper.insert(session);
         return session;
     }

@@ -79,6 +79,8 @@ function ChatPage({
   const [lastActionHint, setLastActionHint] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [bootError, setBootError] = useState<string | null>(null)
+  const [sessionQuery, setSessionQuery] = useState('')
+  const [sessionKeyword, setSessionKeyword] = useState('')
   const [userQuestion, setUserQuestion] = useState<string | null>(null)
   const [answerText, setAnswerText] = useState('')
   const [citations, setCitations] = useState<StreamCitation[]>([])
@@ -90,13 +92,21 @@ function ChatPage({
   const [feedbackBusy, setFeedbackBusy] = useState(false)
   const scopeRef = useRef<HTMLDivElement | null>(null)
   const booted = useRef(false)
+  const sessionsReady = useRef(false)
 
   const placeholder = useMemo(() => '继续追问…', [])
   const selectedScopeLabel =
     knowledgeScopes.find((scope) => scope.id === selectedScope)?.label ?? '人事制度库'
 
-  async function refreshSessions(preferId?: number | null) {
-    const list = await listSessions()
+  function friendlyError(err: unknown, fallback: string) {
+    const msg = err instanceof Error ? err.message : fallback
+    // 后端兜底「系统错误」对空态/创建失败不够友好，改为业务文案
+    if (!msg || msg === '系统错误') return fallback
+    return msg
+  }
+
+  async function refreshSessions(preferId?: number | null, keyword?: string) {
+    const list = await listSessions(keyword ?? (sessionKeyword || undefined))
     setSessions(list)
     const target =
       (preferId && list.find((s) => s.id === preferId)) ||
@@ -123,57 +133,107 @@ function ChatPage({
           // 偏好可选
         }
 
-        let list = await listSessions()
+        let list: ChatSession[] = []
+        try {
+          list = await listSessions()
+        } catch (err) {
+          // 列表失败时走空态，避免侧栏直接展示「系统错误」
+          setBootError(friendlyError(err, ''))
+          setSessions([])
+          return
+        }
+
         if (initialSessionId && list.find((s) => s.id === initialSessionId)) {
           setSessions(list)
           setSessionId(initialSessionId)
-          const detail = await getSession(initialSessionId)
-          const scope = (detail.session.scope?.split(',')[0] || 'hr') as KnowledgeScopeId
-          if (knowledgeScopes.some((s) => s.id === scope)) setSelectedScope(scope)
-          const msgs = detail.messages || []
-          const lastUser = [...msgs].reverse().find((m) => m.role === 'user')
-          const lastAi = [...msgs].reverse().find((m) => m.role === 'assistant')
-          if (lastUser) {
-            setUserQuestion(lastUser.content || '')
-            setLastUserMessageId(lastUser.id)
-          }
-          if (lastAi) {
-            setAnswerText(lastAi.content || '')
-            setAssistantMessageId(lastAi.id)
-            setDoneInfo({
-              messageId: lastAi.id,
-              elapsedMs: lastAi.elapsedMs || 0,
-              status: lastAi.answerStatus || 'OK',
-            })
-            const cites = (detail.citations || [])
-              .filter((c) => c.messageId === lastAi.id)
-              .map((c, idx) => ({
-                index: c.citeIndex || idx + 1,
-                docId: String(c.docId),
-                title: c.title,
-                page: c.pageNo,
-                knowledgeBase: c.libraryName || '',
-                knowledgeBaseId: c.libraryCode || '',
-                excerpt: c.excerpt,
-              }))
-            setCitations(cites)
+          try {
+            const detail = await getSession(initialSessionId)
+            const scope = (detail.session.scope?.split(',')[0] || 'hr') as KnowledgeScopeId
+            if (knowledgeScopes.some((s) => s.id === scope)) setSelectedScope(scope)
+            const msgs = detail.messages || []
+            const lastUser = [...msgs].reverse().find((m) => m.role === 'user')
+            const lastAi = [...msgs].reverse().find((m) => m.role === 'assistant')
+            if (lastUser) {
+              setUserQuestion(lastUser.content || '')
+              setLastUserMessageId(lastUser.id)
+            }
+            if (lastAi) {
+              setAnswerText(lastAi.content || '')
+              setAssistantMessageId(lastAi.id)
+              setDoneInfo({
+                messageId: lastAi.id,
+                elapsedMs: lastAi.elapsedMs || 0,
+                status: lastAi.answerStatus || 'OK',
+              })
+              const cites = (detail.citations || [])
+                .filter((c) => c.messageId === lastAi.id)
+                .map((c, idx) => ({
+                  index: c.citeIndex || idx + 1,
+                  docId: String(c.docId),
+                  title: c.title,
+                  page: c.pageNo,
+                  knowledgeBase: c.libraryName || '',
+                  knowledgeBaseId: c.libraryCode || '',
+                  excerpt: c.excerpt,
+                }))
+              setCitations(cites)
+            }
+          } catch {
+            // 详情失败仍保留会话列表
           }
           return
         }
 
         if (!list.length) {
-          const created = await createSession()
-          list = [created]
+          try {
+            const created = await createSession()
+            list = [created]
+          } catch {
+            // 空列表且自动建会话失败：保持空态，不报「系统错误」
+            setSessions([])
+            setBootError(null)
+            return
+          }
         }
         setSessions(list)
         setSessionId(list[0].id)
         const scope = (list[0].scope?.split(',')[0] || 'hr') as KnowledgeScopeId
         if (knowledgeScopes.some((s) => s.id === scope)) setSelectedScope(scope)
       } catch (err) {
-        setBootError(err instanceof Error ? err.message : '会话初始化失败')
+        setBootError(friendlyError(err, '会话初始化失败'))
+        setSessions([])
+      } finally {
+        sessionsReady.current = true
       }
     })()
   }, [initialSessionId])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSessionKeyword(sessionQuery.trim())
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [sessionQuery])
+
+  useEffect(() => {
+    if (!sessionsReady.current) return
+    let alive = true
+    ;(async () => {
+      try {
+        const list = await listSessions(sessionKeyword || undefined)
+        if (!alive) return
+        setSessions(list)
+        setBootError(null)
+      } catch (err) {
+        if (!alive) return
+        setSessions([])
+        setBootError(friendlyError(err, sessionKeyword ? '未找到匹配会话' : ''))
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [sessionKeyword])
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -253,19 +313,22 @@ function ChatPage({
 
   async function onNewChat() {
     try {
-      const created = await createSession()
+      const created = await createSession(selectedScope === 'all' ? undefined : selectedScope)
       setUserQuestion(null)
       setAnswerText('')
       setCitations([])
       setDoneInfo(null)
       setAssistantMessageId(null)
       setLastUserMessageId(null)
-      await refreshSessions(created.id)
+      setSessionQuery('')
+      setSessionKeyword('')
+      setBootError(null)
+      await refreshSessions(created.id, '')
       const scope = (created.scope?.split(',')[0] || selectedScope) as KnowledgeScopeId
       if (knowledgeScopes.some((s) => s.id === scope)) setSelectedScope(scope)
       setLastActionHint('已创建新对话')
     } catch (err) {
-      setLastActionHint(err instanceof Error ? err.message : '创建失败')
+      setLastActionHint(friendlyError(err, '创建失败，请稍后重试'))
     }
   }
 
@@ -429,7 +492,12 @@ function ChatPage({
 
         <div className="qaHistorySearch">
           <Search size={16} />
-          <input placeholder="搜索历史对话…" aria-label="搜索历史对话" disabled />
+          <input
+            value={sessionQuery}
+            onChange={(e) => setSessionQuery(e.target.value)}
+            placeholder="搜索历史对话…"
+            aria-label="搜索历史对话"
+          />
         </div>
 
         <div className="qaHistoryGroups">
@@ -454,7 +522,7 @@ function ChatPage({
               ))}
               {!sessions.length ? (
                 <div className="qaHistoryMeta" style={{ padding: '8px 12px' }}>
-                  {bootError || '暂无会话'}
+                  {bootError || (sessionKeyword ? '未找到匹配会话' : '暂无会话')}
                 </div>
               ) : null}
             </div>

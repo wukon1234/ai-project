@@ -138,7 +138,10 @@ function KnowledgeBrowse({ onAsk, onRead, onBackHome }: KnowledgeBrowseProps) {
         if (!alive) return
         setLibraries((list || []).map(mapLibrary).filter(Boolean) as KnowledgeLibrary[])
       } catch (err) {
-        if (alive) setError(err instanceof Error ? err.message : '加载知识库失败')
+        if (alive) {
+          const msg = err instanceof Error ? err.message : '加载知识库失败'
+          if (msg !== '系统错误') setError(msg)
+        }
       } finally {
         if (alive) setLoading(false)
       }
@@ -169,7 +172,8 @@ function KnowledgeBrowse({ onAsk, onRead, onBackHome }: KnowledgeBrowseProps) {
         if (!alive) return
         setDocs([])
         setTotal(0)
-        setError(err instanceof Error ? err.message : '加载文档失败')
+        const msg = err instanceof Error ? err.message : '加载文档失败'
+        if (msg !== '系统错误') setError(msg)
       } finally {
         if (alive) setLoading(false)
       }
