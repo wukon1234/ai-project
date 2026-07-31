@@ -46,7 +46,8 @@ public class ShareService {
         String token = UUID.randomUUID().toString().replace("-", "");
         session.setShareToken(token);
         chatSessionMapper.updateById(session);
-        writeAudit(userId, "SHARE_SESSION", "session", String.valueOf(sessionId));
+        writeAudit(userId, "SHARE_SESSION", "session", String.valueOf(sessionId),
+                "分享会话：" + (session.getTitle() == null ? sessionId : session.getTitle()));
         Map<String, Object> data = new LinkedHashMap<String, Object>();
         data.put("shareToken", token);
         data.put("shareUrl", trimSlash(shareBaseUrl) + "/?view=share-session&token=" + token);
@@ -103,8 +104,8 @@ public class ShareService {
     }
 
     /** 写入分享相关审计日志。 */
-    private void writeAudit(Long userId, String action, String targetType, String targetId) {
-        auditService.write(userId, action, targetType, targetId, action);
+    private void writeAudit(Long userId, String action, String targetType, String targetId, String detail) {
+        auditService.write(userId, action, targetType, targetId, detail);
     }
 
     private String trimSlash(String url) {

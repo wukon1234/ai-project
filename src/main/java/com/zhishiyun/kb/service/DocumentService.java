@@ -108,7 +108,8 @@ public class DocumentService {
                     userId, docId, storageKey, download);
             throw new BizException(ErrorCode.BIZ_ERROR, "暂无原文文件");
         }
-        writeAudit(userId, download ? "DOWNLOAD_DOC" : "PREVIEW_DOC", "document", String.valueOf(docId));
+        writeAudit(userId, download ? "DOWNLOAD_DOC" : "PREVIEW_DOC", "document", String.valueOf(docId),
+                (download ? "下载文档：" : "预览文档：") + doc.getTitle());
         log.info("document file access, userId={}, docId={}, download={}", userId, docId, download);
         return file;
     }
@@ -170,7 +171,7 @@ public class DocumentService {
             log.warn("doc share redis unavailable, fallback to local store, docId={}: {}", docId, ex.getMessage());
             LOCAL_SHARE_STORE.put(token, payload);
         }
-        writeAudit(userId, "SHARE_DOC", "document", String.valueOf(docId));
+        writeAudit(userId, "SHARE_DOC", "document", String.valueOf(docId), "分享文档：" + doc.getTitle());
         Map<String, Object> data = new HashMap<String, Object>();
         data.put("shareToken", token);
         String base = shareBaseUrl == null ? "http://localhost:5173" : shareBaseUrl;
@@ -230,7 +231,7 @@ public class DocumentService {
         return count != null && count > 0;
     }
 
-    private void writeAudit(Long userId, String action, String targetType, String targetId) {
-        auditService.write(userId, action, targetType, targetId, action);
+    private void writeAudit(Long userId, String action, String targetType, String targetId, String detail) {
+        auditService.write(userId, action, targetType, targetId, detail);
     }
 }

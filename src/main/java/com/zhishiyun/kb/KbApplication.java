@@ -10,6 +10,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class KbApplication {
 
     public static void main(String[] args) {
+
         SpringApplication.run(KbApplication.class, args);
+        System.out.println("智识云后端启动成功！");
     }
 }

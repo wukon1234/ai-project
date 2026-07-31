@@ -44,18 +44,18 @@ export function clearAdminSession() {
 
 export type AdminLoginResult =
   | { ok: true; user: AdminUser }
-  | { ok: false; reason: 'invalid' | 'forbidden' }
+  | { ok: false; reason: 'invalid' | 'forbidden' | 'network'; message?: string }
 
 function loginAdminMock(email: string, password: string): AdminLoginResult {
   const normalized = email.trim().toLowerCase()
   const account = ACCOUNTS.find((item) => item.email === normalized)
-  if (!account) return { ok: false, reason: 'invalid' }
+  if (!account) return { ok: false, reason: 'invalid', message: 'Mock：账号不存在' }
 
   const passwordOk = account.role === 'EMPLOYEE' ? true : account.password === password
-  if (!passwordOk) return { ok: false, reason: 'invalid' }
+  if (!passwordOk) return { ok: false, reason: 'invalid', message: 'Mock：密码错误' }
 
   if (account.role === 'EMPLOYEE') {
-    return { ok: false, reason: 'forbidden' }
+    return { ok: false, reason: 'forbidden', message: '无管理后台权限' }
   }
 
   const user: AdminUser = {
@@ -68,10 +68,18 @@ function loginAdminMock(email: string, password: string): AdminLoginResult {
 }
 
 export async function loginAdmin(email: string, password: string): Promise<AdminLoginResult> {
+  console.info('[admin-login]', {
+    mock: USE_ADMIN_MOCK,
+    account: email.trim(),
+    apiBase: import.meta.env.VITE_API_BASE_URL ?? '(relative/proxy)',
+  })
+
   if (USE_ADMIN_MOCK) {
     return loginAdminMock(email, password)
   }
 
+  // 先清掉本地旧 token，防止登录请求带过期 Authorization
+  clearTokens()
   try {
     const data = await login({
       account: email.trim(),
@@ -79,9 +87,10 @@ export async function loginAdmin(email: string, password: string): Promise<Admin
       rememberMe: true,
     })
     const role = (data.user?.roleCode || 'EMPLOYEE') as AdminRole
+    console.info('[admin-login] ok', { role, userId: data.user?.id })
     if (role !== 'SYS_ADMIN' && role !== 'KB_ADMIN') {
       clearTokens()
-      return { ok: false, reason: 'forbidden' }
+      return { ok: false, reason: 'forbidden', message: `当前角色 ${role} 无管理后台权限` }
     }
     saveTokens(data.accessToken, data.refreshToken)
     const user: AdminUser = {
@@ -92,11 +101,24 @@ export async function loginAdmin(email: string, password: string): Promise<Admin
     persistAdminUser(user)
     return { ok: true, user }
   } catch (err) {
-    const message = err instanceof Error ? err.message : ''
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[admin-login] failed', err)
     if (message.includes('权限') || message.includes('禁止')) {
-      return { ok: false, reason: 'forbidden' }
+      return { ok: false, reason: 'forbidden', message }
     }
-    return { ok: false, reason: 'invalid' }
+    if (
+      message.includes('Failed to fetch') ||
+      message.includes('NetworkError') ||
+      message.includes('Load failed') ||
+      message.includes('网络')
+    ) {
+      return {
+        ok: false,
+        reason: 'network',
+        message: '无法连接后端（请确认 Vite 代理与 8080 服务）',
+      }
+    }
+    return { ok: false, reason: 'invalid', message: message || '邮箱或密码错误' }
   }
 }
 

@@ -236,7 +236,13 @@ export default function AdminRoles() {
           <h1>角色配置</h1>
           <p className="adminMuted">预置三角色；可调整菜单级能力开关</p>
         </div>
-        <button type="button" className="adminGhostBtn" disabled title="即将支持">
+        <button
+          type="button"
+          className="adminGhostBtn"
+          onClick={() =>
+            showToast('自定义角色即将支持，当前仅可配置预置的普通员工 / 知识管理员 / 系统管理员')
+          }
+        >
           <Plus size={14} />
           新建角色
         </button>

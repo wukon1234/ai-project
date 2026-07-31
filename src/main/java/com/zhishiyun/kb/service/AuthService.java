@@ -80,15 +80,24 @@ public class AuthService {
     /** 邮箱或手机号登录，支持 rememberMe 延长 refresh 有效期。 */
     @Transactional
     public AuthResponse login(LoginRequest request) {
+        String account = request.getAccount() == null ? "" : request.getAccount().trim();
+        log.debug("login query by account={}", account);
         SysUserEntity user = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUserEntity>()
-                .eq(SysUserEntity::getEmail, request.getAccount())
-                .or()
-                .eq(SysUserEntity::getMobile, request.getAccount())
+                .and(w -> w.eq(SysUserEntity::getEmail, account).or().eq(SysUserEntity::getMobile, account))
                 .last("limit 1"));
-        if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+        if (user == null) {
+            log.warn("login failed: user not found, account={}", account);
+            throw new BizException(ErrorCode.BIZ_ERROR, "账号或密码错误");
+        }
+        boolean pwdOk = passwordEncoder.matches(request.getPassword(), user.getPasswordHash());
+        log.debug("login user id={} role={} status={} pwdOk={}",
+                user.getId(), user.getRoleCode(), user.getStatus(), pwdOk);
+        if (!pwdOk) {
+            log.warn("login failed: bad password, userId={} account={}", user.getId(), account);
             throw new BizException(ErrorCode.BIZ_ERROR, "账号或密码错误");
         }
         if (user.getStatus() == null || user.getStatus() != 1) {
+            log.warn("login failed: status unavailable, userId={} status={}", user.getId(), user.getStatus());
             throw new BizException(ErrorCode.BIZ_ERROR, "账号不可用");
         }
         user.setLastLoginAt(LocalDateTime.now());

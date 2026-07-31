@@ -49,7 +49,14 @@ export type IngestTask = {
   summary?: string
 }
 
-export type AuditTargetType = 'user' | 'document' | 'library' | 'acl' | 'system'
+export type AuditTargetType =
+  | 'user'
+  | 'document'
+  | 'library'
+  | 'acl'
+  | 'system'
+  | 'auth'
+  | 'session'
 
 export type AuditEvent = {
   id: string

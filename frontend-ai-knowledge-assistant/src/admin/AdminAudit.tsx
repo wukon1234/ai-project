@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, RotateCcw, Search } from 'lucide-react'
 import { AdminApiError, USE_ADMIN_MOCK, realAdminApi } from './api'
+import {
+  auditActionLabel,
+  auditDetailLabel,
+  auditTargetTypeLabel,
+} from './auditLabels'
 import { AUDIT_ACTIONS, KB_ADMIN_AUDIT_ACTIONS, loadAuditEvents } from './mock'
 import type { AdminRole, AuditEvent, AuditTargetType } from './types'
 import { useAdminToast } from './useAdminToast'
@@ -13,7 +18,16 @@ type RangeKey = 'today' | '7d' | '30d' | 'custom'
 
 const PAGE_SIZE = 20
 
-const TARGET_TYPES: Array<AuditTargetType | ''> = ['', 'user', 'document', 'library', 'acl', 'system']
+const TARGET_TYPES: Array<AuditTargetType | ''> = [
+  '',
+  'user',
+  'document',
+  'library',
+  'acl',
+  'system',
+  'auth',
+  'session',
+]
 
 function parseStamp(stamp: string) {
   const [date, time] = stamp.split(' ')
@@ -223,7 +237,7 @@ export default function AdminAudit({ role }: Props) {
 
   async function exportCsv() {
     if (USE_ADMIN_MOCK) {
-      const header = ['时间', '操作人', '邮箱', 'action', '对象类型', '对象', '详情', 'IP']
+      const header = ['时间', '操作人', '邮箱', '操作类型', '对象类型', '对象', '详情', 'IP']
       const lines = [
         header.join(','),
         ...mockFiltered.map((e) =>
@@ -231,10 +245,10 @@ export default function AdminAudit({ role }: Props) {
             e.createdAt,
             e.actor,
             e.actorEmail || '',
-            e.action,
-            e.targetType,
+            auditActionLabel(e.action),
+            auditTargetTypeLabel(e.targetType),
             e.target,
-            e.detail,
+            auditDetailLabel(e.detail, e.action),
             e.ip,
           ]
             .map(csvEscape)
@@ -325,13 +339,16 @@ export default function AdminAudit({ role }: Props) {
         )}
 
         <div className="adminToolbar adminToolbarWrap">
-          <label className="adminSearch">
-            <Search size={16} />
-            <input
-              value={actorQuery}
-              onChange={(e) => setActorQuery(e.target.value)}
-              placeholder="操作人（姓名 / 邮箱）"
-            />
+          <label className="adminInlineField adminInlineField--grow">
+            操作人
+            <span className="adminSearch">
+              <Search size={16} />
+              <input
+                value={actorQuery}
+                onChange={(e) => setActorQuery(e.target.value)}
+                placeholder="姓名 / 邮箱"
+              />
+            </span>
           </label>
           <label className="adminInlineField">
             对象类型
@@ -341,22 +358,25 @@ export default function AdminAudit({ role }: Props) {
             >
               {TARGET_TYPES.map((t) => (
                 <option key={t || 'all'} value={t}>
-                  {t || '全部'}
+                  {t ? auditTargetTypeLabel(t) : '全部'}
                 </option>
               ))}
             </select>
           </label>
-          <label className="adminSearch">
-            <input
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              placeholder="关键词（详情 / 对象）"
-            />
+          <label className="adminInlineField adminInlineField--grow">
+            关键词
+            <span className="adminSearch">
+              <input
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="详情 / 对象"
+              />
+            </span>
           </label>
         </div>
 
         <div className="adminActionChips">
-          <span className="adminMuted">Action</span>
+          <span className="adminMuted">操作类型</span>
           {actionOptions.map((action) => (
             <button
               key={action}
@@ -364,7 +384,7 @@ export default function AdminAudit({ role }: Props) {
               className={`adminChip${selectedActions.includes(action) ? ' isActive' : ''}`}
               onClick={() => toggleAction(action)}
             >
-              {action}
+              {auditActionLabel(action)}
             </button>
           ))}
         </div>
@@ -399,12 +419,12 @@ export default function AdminAudit({ role }: Props) {
           </div>
         ) : (
           <div className="adminTableWrap">
-            <table className="adminTable">
+            <table className="adminTable adminTable--audit">
               <thead>
                 <tr>
                   <th>时间</th>
                   <th>操作人</th>
-                  <th>Action</th>
+                  <th>操作类型</th>
                   <th>对象</th>
                   <th>详情摘要</th>
                   <th>IP</th>
@@ -417,21 +437,23 @@ export default function AdminAudit({ role }: Props) {
                     className="adminClickRow"
                     onClick={() => setDetail(event)}
                   >
-                    <td>{event.createdAt}</td>
+                    <td>{event.createdAt || '—'}</td>
                     <td>
-                      <strong>{event.actor}</strong>
+                      <strong>{event.actor || '—'}</strong>
                     </td>
                     <td>
-                      <span className="adminActionChip">{event.action}</span>
+                      <span className="adminActionChip">{auditActionLabel(event.action)}</span>
                     </td>
                     <td>
                       <div className="adminTaskMain">
-                        <strong>{event.target}</strong>
-                        <span className="adminMuted">{event.targetType}</span>
+                        <strong>{event.target || '—'}</strong>
+                        <span className="adminMuted">{auditTargetTypeLabel(event.targetType)}</span>
                       </div>
                     </td>
-                    <td className="adminClamp">{event.detail}</td>
-                    <td>{event.ip}</td>
+                    <td>
+                      <div className="adminClamp">{auditDetailLabel(event.detail, event.action)}</div>
+                    </td>
+                    <td>{event.ip || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -474,35 +496,35 @@ export default function AdminAudit({ role }: Props) {
             <dl className="adminDescList">
               <div>
                 <dt>时间</dt>
-                <dd>{detail.createdAt}</dd>
+                <dd>{detail.createdAt || '—'}</dd>
               </div>
               <div>
                 <dt>操作人</dt>
                 <dd>
-                  {detail.actor}
+                  {detail.actor || '—'}
                   {detail.actorEmail ? `（${detail.actorEmail}）` : ''}
                 </dd>
               </div>
               <div>
-                <dt>Action</dt>
+                <dt>操作类型</dt>
                 <dd>
-                  <span className="adminActionChip">{detail.action}</span>
+                  <span className="adminActionChip">{auditActionLabel(detail.action)}</span>
                 </dd>
               </div>
               <div>
                 <dt>对象</dt>
                 <dd>
-                  {detail.target} · {detail.targetType}
+                  {detail.target || '—'} · {auditTargetTypeLabel(detail.targetType)}
                   {detail.targetId ? ` · ${detail.targetId}` : ''}
                 </dd>
               </div>
               <div>
                 <dt>IP</dt>
-                <dd>{detail.ip}</dd>
+                <dd>{detail.ip || '—'}</dd>
               </div>
               <div>
-                <dt>详情</dt>
-                <dd>{detail.detail}</dd>
+                <dt>详情摘要</dt>
+                <dd>{auditDetailLabel(detail.detail, detail.action)}</dd>
               </div>
             </dl>
             <pre className="adminJsonBlock">{JSON.stringify(detail, null, 2)}</pre>

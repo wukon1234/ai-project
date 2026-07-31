@@ -239,14 +239,17 @@ export default function AdminLibraries({
         </button>
       </div>
 
-      <div className="adminToolbar">
-        <label className="adminSearch">
-          <Search size={16} />
-          <input
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="搜索名称 / code…"
-          />
+      <div className="adminToolbar adminToolbarWrap">
+        <label className="adminInlineField adminInlineField--grow">
+          关键词
+          <span className="adminSearch">
+            <Search size={16} />
+            <input
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="搜索名称 / code…"
+            />
+          </span>
         </label>
       </div>
 
@@ -290,7 +293,9 @@ export default function AdminLibraries({
                   <td>
                     <code>{item.code}</code>
                   </td>
-                  <td className="adminClamp">{item.description || '—'}</td>
+                  <td>
+                    <div className="adminClamp">{item.description || '—'}</div>
+                  </td>
                   <td>
                     <div className="adminTagRow">
                       {item.tags.length

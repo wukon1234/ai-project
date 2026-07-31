@@ -16,6 +16,7 @@ import {
   loadLibraries,
   loadUsers,
 } from './mock'
+import { auditActionLabel } from './auditLabels'
 import type { AdminRole, AdminView, AuditEvent, IngestTask } from './types'
 import { useAdminToast } from './useAdminToast'
 
@@ -27,6 +28,13 @@ type Props = {
 
 function statusClass(status: string) {
   return `adminStatus adminStatus--${status.toLowerCase()}`
+}
+
+const INGEST_STATUS_LABELS: Record<string, string> = {
+  PENDING: '等待中',
+  RUNNING: '处理中',
+  SUCCESS: '成功',
+  FAILED: '失败',
 }
 
 function loadMockDashboard(role: AdminRole): DashboardData {
@@ -209,7 +217,9 @@ export default function AdminDashboard({ userName, role, onNavigate }: Props) {
                         {task.libraryName} · {task.createdAt}
                       </span>
                     </div>
-                    <span className={statusClass(task.status)}>{task.status}</span>
+                    <span className={statusClass(task.status)}>
+                      {INGEST_STATUS_LABELS[task.status] || task.status}
+                    </span>
                     <div className="adminProgress">
                       <div style={{ width: `${task.progress}%` }} />
                     </div>
@@ -230,7 +240,7 @@ export default function AdminDashboard({ userName, role, onNavigate }: Props) {
                 {audits.map((event) => (
                   <li key={event.id}>
                     <strong>{event.actor}</strong>
-                    <span className="adminActionChip">{event.action}</span>
+                    <span className="adminActionChip">{auditActionLabel(event.action)}</span>
                     <span className="adminMuted">{event.target}</span>
                     <time>{event.createdAt}</time>
                   </li>

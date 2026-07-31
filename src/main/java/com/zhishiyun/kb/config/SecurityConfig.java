@@ -15,6 +15,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 /** Spring Security：无状态 JWT；放行登录/SSO/分享/帮助/内部入库等。 */
 @Configuration
@@ -24,11 +25,14 @@ public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
     private final AskRateLimitFilter askRateLimitFilter;
     private final ObjectMapper objectMapper;
+    private final CorsConfigurationSource corsConfigurationSource;
 
     /** 无状态 JWT 过滤器链；放行登录/SSO/分享/帮助/内部入库等公开路径。 */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.csrf().disable()
+                .cors().configurationSource(corsConfigurationSource)
+                .and()
                 .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
                 .authorizeRequests()

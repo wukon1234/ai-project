@@ -197,15 +197,46 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return json.data
 }
 
+/** 登录/注册不携带旧 Authorization，避免过期 token 被网关/过滤器直接 401。 */
+async function requestAnonymous<T>(path: string, init?: RequestInit): Promise<T> {
+  const url = `${API_BASE}${path}`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(init?.headers as Record<string, string> | undefined),
+  }
+  delete headers.Authorization
+  console.info('[api]', init?.method || 'GET', url)
+  let resp: Response
+  try {
+    resp = await fetch(url, { ...init, headers })
+  } catch (err) {
+    console.error('[api] network error', url, err)
+    throw new Error('网络请求失败，无法连接后端')
+  }
+  const text = await resp.text()
+  let json: ApiResult<T>
+  try {
+    json = JSON.parse(text) as ApiResult<T>
+  } catch {
+    console.error('[api] non-json response', resp.status, text.slice(0, 200))
+    throw new Error(`后端响应异常 HTTP ${resp.status}`)
+  }
+  if (!resp.ok || json.code !== 0) {
+    console.warn('[api] business error', { status: resp.status, code: json.code, message: json.message })
+    throw new Error(json.message || `请求失败(${json.code || resp.status})`)
+  }
+  return json.data
+}
+
 export function login(payload: LoginPayload) {
-  return request<AuthResponse>('/api/v1/auth/login', {
+  return requestAnonymous<AuthResponse>('/api/v1/auth/login', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
 }
 
 export function register(payload: RegisterPayload) {
-  return request<AuthResponse>('/api/v1/auth/register', {
+  return requestAnonymous<AuthResponse>('/api/v1/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload),
   })

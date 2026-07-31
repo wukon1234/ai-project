@@ -77,6 +77,17 @@ function statusClass(status: string) {
   return `adminStatus adminStatus--${status.toLowerCase()}`
 }
 
+const INGEST_STATUS_LABELS: Record<string, string> = {
+  PENDING: '等待中',
+  RUNNING: '处理中',
+  SUCCESS: '成功',
+  FAILED: '失败',
+}
+
+function ingestStatusLabel(status: string) {
+  return INGEST_STATUS_LABELS[status] || status
+}
+
 function errMsg(err: unknown, fallback: string) {
   return err instanceof AdminApiError ? err.message : fallback
 }
@@ -504,18 +515,21 @@ export default function AdminIngest({ initialLibrary = '', initialStatus = '' }:
               onChange={(e) => setFilterStatus(e.target.value as IngestTaskStatus | '')}
             >
               <option value="">全部</option>
-              <option value="PENDING">PENDING</option>
-              <option value="RUNNING">RUNNING</option>
-              <option value="SUCCESS">SUCCESS</option>
-              <option value="FAILED">FAILED</option>
+              <option value="PENDING">等待中</option>
+              <option value="RUNNING">处理中</option>
+              <option value="SUCCESS">成功</option>
+              <option value="FAILED">失败</option>
             </select>
           </label>
-          <label className="adminSearch">
-            <input
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              placeholder="搜索文档标题…"
-            />
+          <label className="adminInlineField adminInlineField--grow">
+            关键词
+            <span className="adminSearch">
+              <input
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="搜索文档标题…"
+              />
+            </span>
           </label>
         </div>
 
@@ -558,7 +572,7 @@ export default function AdminIngest({ initialLibrary = '', initialStatus = '' }:
                     <td>{task.libraryName}</td>
                     <td>{task.fileType}</td>
                     <td>
-                      <span className={statusClass(task.status)}>{task.status}</span>
+                      <span className={statusClass(task.status)}>{ingestStatusLabel(task.status)}</span>
                     </td>
                     <td style={{ minWidth: 120 }}>
                       <div className="adminProgress">
@@ -566,7 +580,9 @@ export default function AdminIngest({ initialLibrary = '', initialStatus = '' }:
                       </div>
                       <span className="adminMuted">{task.progress}%</span>
                     </td>
-                    <td className="adminClamp">{task.errorMsg || '—'}</td>
+                    <td>
+                      <div className="adminClamp">{task.errorMsg || '—'}</div>
+                    </td>
                     <td>{task.createdAt}</td>
                     <td>
                       <div className="adminRowActions">
@@ -632,7 +648,9 @@ export default function AdminIngest({ initialLibrary = '', initialStatus = '' }:
               </div>
               <div>
                 <dt>状态</dt>
-                <dd>READY</dd>
+                <dd>
+                  <span className={statusClass(detail.status)}>{ingestStatusLabel(detail.status)}</span>
+                </dd>
               </div>
               <div>
                 <dt>摘要</dt>

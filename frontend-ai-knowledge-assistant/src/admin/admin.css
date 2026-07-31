@@ -498,12 +498,12 @@ html[data-theme='dark'] .adminTopbar {
 
 .adminToolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
+  align-items: flex-end;
 }
 
 .adminSearch {
-  flex: 1;
-  max-width: 360px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -512,6 +512,9 @@ html[data-theme='dark'] .adminTopbar {
   border-radius: 12px;
   padding: 0 12px;
   color: var(--muted);
+  min-height: 42px;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .adminSearch input {
@@ -535,7 +538,9 @@ html[data-theme='dark'] .adminTopbar {
 .adminTable {
   width: 100%;
   border-collapse: collapse;
+  border-spacing: 0;
   font-size: 14px;
+  table-layout: fixed;
 }
 
 .adminTable th,
@@ -543,7 +548,8 @@ html[data-theme='dark'] .adminTopbar {
   padding: 12px 14px;
   border-bottom: 1px solid var(--divider);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
+  word-break: break-word;
 }
 
 .adminTable th {
@@ -557,12 +563,39 @@ html[data-theme='dark'] .adminTopbar {
   border-bottom: 0;
 }
 
+/* 勿直接挂在 td 上：display:-webkit-box 会破坏 table-cell，导致横线错位 */
 .adminClamp {
-  max-width: 220px;
+  max-width: 100%;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  word-break: break-word;
+}
+
+.adminTable--audit th:nth-child(1),
+.adminTable--audit td:nth-child(1) {
+  width: 168px;
+}
+
+.adminTable--audit th:nth-child(2),
+.adminTable--audit td:nth-child(2) {
+  width: 120px;
+}
+
+.adminTable--audit th:nth-child(3),
+.adminTable--audit td:nth-child(3) {
+  width: 110px;
+}
+
+.adminTable--audit th:nth-child(4),
+.adminTable--audit td:nth-child(4) {
+  width: 160px;
+}
+
+.adminTable--audit th:nth-child(6),
+.adminTable--audit td:nth-child(6) {
+  width: 120px;
 }
 
 .adminTagRow {
@@ -832,16 +865,33 @@ html[data-theme='dark'] .adminLoginPanel {
   gap: 6px;
   font-size: 13px;
   color: var(--muted);
+  min-width: 140px;
+  flex: 0 1 180px;
+}
+
+.adminInlineField--grow {
+  flex: 1 1 220px;
+  min-width: 200px;
+  max-width: 360px;
 }
 
 .adminUploadControls select,
 .adminInlineField select,
+.adminInlineField input[type='date'],
+.adminInlineField input[type='text'],
 .adminForm select {
   border: 1px solid var(--divider);
   border-radius: 12px;
   padding: 10px 12px;
   font: inherit;
   color: var(--text);
+  background: var(--bg);
+  min-height: 42px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.adminInlineField .adminSearch {
   background: var(--bg);
 }
 
@@ -898,7 +948,17 @@ html[data-theme='dark'] .adminLoginPanel {
 
 .adminToolbarWrap {
   flex-wrap: wrap;
-  align-items: end;
+  align-items: flex-end;
+}
+
+.adminToolbar .adminHeaderActions {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-bottom: 0;
+  min-height: 42px;
 }
 
 .adminTableEmpty {

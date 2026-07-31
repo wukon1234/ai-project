@@ -344,13 +344,16 @@ export default function AdminUsers({ initialStatus = '' }: Props) {
             <option value="SYS_ADMIN">系统管理员</option>
           </select>
         </label>
-        <label className="adminSearch">
-          <Search size={16} />
-          <input
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="姓名 / 工号 / 邮箱 / 手机 / 部门"
-          />
+        <label className="adminInlineField adminInlineField--grow">
+          关键词
+          <span className="adminSearch">
+            <Search size={16} />
+            <input
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="姓名 / 工号 / 邮箱 / 手机 / 部门"
+            />
+          </span>
         </label>
         <div className="adminHeaderActions">
           <button

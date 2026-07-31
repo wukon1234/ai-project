@@ -501,24 +501,38 @@ export function loadAuditEvents(): AuditEvent[] {
 export const AUDIT_ACTIONS = [
   'LOGIN',
   'LOGIN_FAIL',
-  'DOWNLOAD',
-  'SHARE',
+  'SSO_LOGIN',
+  'DOWNLOAD_DOC',
+  'PREVIEW_DOC',
+  'SHARE_DOC',
+  'SHARE_SESSION',
   'AUTH_DENY',
   'USER_APPROVE',
+  'USER_CREATE',
   'ACL_UPDATE',
   'INGEST_UPLOAD',
+  'INGEST_RETRY',
   'INGEST_REINDEX',
+  'LIBRARY_CREATE',
+  'LIBRARY_UPDATE',
   'MODEL_UPDATE',
   'ROLE_UPDATE',
 ] as const
 
 export const KB_ADMIN_AUDIT_ACTIONS = new Set([
   'DOWNLOAD',
+  'DOWNLOAD_DOC',
+  'PREVIEW_DOC',
   'SHARE',
+  'SHARE_DOC',
+  'SHARE_SESSION',
   'AUTH_DENY',
   'ACL_UPDATE',
   'INGEST_UPLOAD',
+  'INGEST_RETRY',
   'INGEST_REINDEX',
+  'LIBRARY_CREATE',
+  'LIBRARY_UPDATE',
 ])
 
 export const MOCK_READY_DOCS = 312

@@ -22,7 +22,13 @@ export default function AdminLogin({ onSuccess, onBackToUser }: Props) {
     try {
       const result = await loginAdmin(email, password)
       if (!result.ok) {
-        showToast(result.reason === 'forbidden' ? '无管理后台权限' : '邮箱或密码错误')
+        if (result.reason === 'forbidden') {
+          showToast(result.message || '无管理后台权限')
+        } else if (result.reason === 'network') {
+          showToast(result.message || '无法连接后端')
+        } else {
+          showToast(result.message || '邮箱或密码错误')
+        }
         return
       }
       onSuccess(result.user)
@@ -82,6 +88,8 @@ export default function AdminLogin({ onSuccess, onBackToUser }: Props) {
             {USE_ADMIN_MOCK ? 'Mock 模式' : '联调模式'}：admin@zhishiyun.com / admin123（系统管理员）
             <br />
             kbadmin@zhishiyun.com / kb123（知识管理员）
+            <br />
+            打开地址请用 http://127.0.0.1:5173/?app=admin（看浏览器 F12 → Console / Network）
           </p>
         </form>
         <footer>安全合规 · 仅限授权管理员</footer>

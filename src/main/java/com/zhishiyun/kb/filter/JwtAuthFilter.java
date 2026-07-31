@@ -13,6 +13,7 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /** 从 Authorization Bearer 解析 JWT，写入 SecurityContext；无效则 401。 */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -31,6 +33,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
+        String path = request.getRequestURI();
+        // 公开登录等接口：忽略过期/脏 token，避免残留 Authorization 导致无法重新登录
+        if (isPublicAuthPath(path)) {
+            log.info("public auth bypass jwt, {} {}", request.getMethod(), path);
+            filterChain.doFilter(request, response);
+            return;
+        }
         String auth = request.getHeader("Authorization");
         if (auth == null || !auth.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
@@ -50,5 +59,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             response.getWriter().write(objectMapper.writeValueAsString(
                     Result.fail(ErrorCode.UNAUTHORIZED.getCode(), ErrorCode.UNAUTHORIZED.getDefaultMessage())));
         }
+    }
+
+    private static boolean isPublicAuthPath(String path) {
+        if (path == null) {
+            return false;
+        }
+        return path.startsWith("/api/v1/auth/login")
+                || path.startsWith("/api/v1/auth/register")
+                || path.startsWith("/api/v1/auth/refresh")
+                || path.startsWith("/api/v1/auth/sso/")
+                || path.startsWith("/api/v1/auth/password/");
     }
 }

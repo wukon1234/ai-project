@@ -28,6 +28,8 @@ mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
   configuration:
     map-underscore-to-camel-case: true
+    # 联调排障：控制台打印完整 SQL + 参数（稳定后可改回默认/关掉）
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
   global-config:
     db-config:
       id-type: assign_id
@@ -121,5 +123,13 @@ auth:
 logging:
   pattern:
     level: "%5p [traceId=%X{traceId:-}]"
+  level:
+    root: info
+    # Mapper SQL（配合 mybatis-plus log-impl；也可单独用 debug 看参数绑定）
+    com.zhishiyun.kb.mapper: debug
+    com.zhishiyun.kb.service.AuthService: debug
+    com.zhishiyun.kb.controller.AuthController: debug
+    com.zhishiyun.kb.filter.JwtAuthFilter: debug
+    com.zhishiyun.kb.admin: debug
 
 
