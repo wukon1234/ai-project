@@ -48,7 +48,7 @@ public class IngestService {
     private final LocalStorageService localStorageService;
     private final ChunkerService chunkerService;
     private final StringRedisTemplate redisTemplate;
-    private final JavaOcrService javaOcrService;
+    private final OcrClient ocrClient;
     private final KbPageVisionMapper kbPageVisionMapper;
     private final VisionClient visionClient;
 
@@ -173,9 +173,19 @@ public class IngestService {
                 // 扫描件/空白页：渲染后 OCR
                 if (!StringUtils.hasText(text) || text.length() < 20) {
                     image = renderer.renderImageWithDPI(i - 1, 172);
-                    JavaOcrService.OcrResult ocr = javaOcrService.recognize(image);
-                    text = normalize(ocr.getText());
-                    confidence = ocr.getConfidence();
+                    try {
+                        OcrClient.OcrResult ocr = ocrClient.recognizeImage(image);
+                        text = normalize(ocr.getText());
+                        confidence = ocr.getConfidence();
+                    } catch (IOException ocrEx) {
+                        if (ocrClient.skipOnPageFail()) {
+                            log.warn("ocr skip page {} of doc {}: {}", i, docId, ocrEx.getMessage());
+                            text = "";
+                            confidence = 0D;
+                        } else {
+                            throw new IOException("第 " + i + " 页 OCR 失败: " + ocrEx.getMessage(), ocrEx);
+                        }
+                    }
                 }
                 // 低置信度页标记 NEED_VISION，并按配额调用 Vision
                 if (confidence != null && confidence < 0.75) {
@@ -209,7 +219,17 @@ public class IngestService {
     private List<PageText> extractImage(Long docId, File imageFile) throws IOException {
         List<PageText> pages = new ArrayList<PageText>();
         BufferedImage image = ImageIO.read(imageFile);
-        JavaOcrService.OcrResult ocr = javaOcrService.recognize(image);
+        OcrClient.OcrResult ocr;
+        try {
+            ocr = ocrClient.recognizeImage(image);
+        } catch (IOException ocrEx) {
+            if (ocrClient.skipOnPageFail()) {
+                log.warn("ocr skip image doc {}: {}", docId, ocrEx.getMessage());
+                pages.add(new PageText(1, ""));
+                return pages;
+            }
+            throw new IOException("图片 OCR 失败: " + ocrEx.getMessage(), ocrEx);
+        }
         String text = normalize(ocr.getText());
         if (ocr.getConfidence() != null && ocr.getConfidence() < 0.75) {
             markNeedVision(docId, 1);

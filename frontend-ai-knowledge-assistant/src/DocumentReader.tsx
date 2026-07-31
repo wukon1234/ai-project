@@ -13,9 +13,11 @@ import {
   ZoomOut,
 } from 'lucide-react'
 import {
+  deleteFavoriteDocument,
   downloadDocument,
   fetchDocumentBlobUrl,
   getDocumentMeta,
+  saveFavoriteDocument,
   shareDocument,
   viewDocument,
   type DocumentMeta,
@@ -130,6 +132,27 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
     }
   }
 
+  async function onToggleFavorite() {
+    const docId = Number(doc.id)
+    if (!Number.isFinite(docId)) {
+      setAskHint('文档 ID 无效，无法收藏')
+      return
+    }
+    try {
+      if (bookmarked) {
+        await deleteFavoriteDocument(docId)
+        setBookmarked(false)
+        setAskHint('已取消收藏')
+      } else {
+        await saveFavoriteDocument(docId, page)
+        setBookmarked(true)
+        setAskHint('已加入收藏')
+      }
+    } catch (err) {
+      setAskHint(err instanceof Error ? err.message : '收藏操作失败')
+    }
+  }
+
   const zoomLabel = zoom === 'fit' ? '适合宽度' : zoom === '100' ? '100%' : '放大'
 
   return (
@@ -152,7 +175,7 @@ function DocumentReader({ doc, onBack }: DocumentReaderProps) {
           <button
             type="button"
             className={`docActionBtn ${bookmarked ? 'docActionBtnActive' : ''}`}
-            onClick={() => setBookmarked((v) => !v)}
+            onClick={onToggleFavorite}
           >
             <Bookmark size={16} />
             <span>收藏</span>

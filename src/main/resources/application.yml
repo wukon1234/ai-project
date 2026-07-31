@@ -71,8 +71,13 @@ kb:
     enabled: ${KB_OCR_ENABLED:true}
     lang: ${KB_OCR_LANG:chi_sim+eng}
     tessdata-path: ${KB_OCR_TESSDATA_PATH:}
+    # PaddleOCR 服务地址；为空时回落本地 Tesseract
+    base-url: ${KB_OCR_BASE_URL:}
     endpoint: ${KB_OCR_ENDPOINT:}
     api-key: ${KB_OCR_API_KEY:}
+    retry: ${KB_OCR_RETRY:3}
+    # fail=OCR 失败整任务 FAILED；skip=跳过该页继续
+    page-fail-strategy: ${KB_OCR_PAGE_FAIL_STRATEGY:fail}
   minio:
     endpoint: ${KB_MINIO_ENDPOINT:http://127.0.0.1:9000}
     access-key: ${KB_MINIO_ACCESS_KEY:minioadmin}

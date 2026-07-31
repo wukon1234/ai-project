@@ -1,9 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BookmarkMinus, BookOpenText, ChevronDown, ChevronUp, MessageCircleQuestion } from 'lucide-react'
+import {
+  deleteFavoriteAnswer,
+  deleteFavoriteDocument,
+  listFavoriteAnswers,
+  listFavoriteDocuments,
+  type FavAnswerApi,
+  type FavDocApi,
+} from './api'
 import type { SourceDoc } from './DocumentReader'
 
 type FavDoc = {
   id: string
+  docId: string
   title: string
   knowledgeBase: string
   savedAt: string
@@ -19,47 +28,27 @@ type FavAnswer = {
   topic: string
 }
 
-const initialDocs: FavDoc[] = [
-  {
-    id: 'fd1',
-    title: '《员工手册 2026 版》',
-    knowledgeBase: '人事制度库',
-    savedAt: '2026-07-28 15:10',
-    page: 23
-  },
-  {
-    id: 'fd2',
-    title: '《2026 年度报销管理制度》',
-    knowledgeBase: '人事制度库',
-    savedAt: '2026-07-26 10:22',
-    page: 5
+function mapDoc(item: FavDocApi): FavDoc {
+  return {
+    id: String(item.id),
+    docId: String(item.docId),
+    title: item.title || '未命名文档',
+    knowledgeBase: item.knowledgeBase || item.category || '',
+    savedAt: item.savedAt || '',
+    page: item.page ?? 1,
   }
-]
+}
 
-const initialAnswers: FavAnswer[] = [
-  {
-    id: 'fa1',
-    summary: '入职满 1 年不满 10 年年休假 5 天；不满 1 年不享受带薪年假。',
-    source: '《员工手册 2026 版》· 第 23 页',
-    savedAt: '2026-07-28 14:40',
-    context: [
-      '问：请问公司年假有几天？入职不满一年怎么算？',
-      '答：根据公司规定，员工年假天数与工龄相关…'
-    ],
-    topic: '年假规定'
-  },
-  {
-    id: 'fa2',
-    summary: '报销需在费用发生后 30 日内提交，并附齐合规票据。',
-    source: '《2026 年度报销管理制度》· 第 5 页',
-    savedAt: '2026-07-25 09:18',
-    context: [
-      '问：报销最晚什么时候提交？',
-      '答：需在费用发生后 30 日内提交…'
-    ],
-    topic: '报销时效'
+function mapAnswer(item: FavAnswerApi): FavAnswer {
+  return {
+    id: String(item.id),
+    summary: item.summary || '',
+    source: item.source || '知识库回答',
+    savedAt: item.savedAt || '',
+    context: Array.isArray(item.context) ? item.context : [],
+    topic: item.topic || '收藏回答',
   }
-]
+}
 
 type FavoritesPageProps = {
   onBack: () => void
@@ -69,11 +58,49 @@ type FavoritesPageProps = {
 
 function FavoritesPage({ onBack, onRead, onAsk }: FavoritesPageProps) {
   const [tab, setTab] = useState<'docs' | 'answers'>('docs')
-  const [docs, setDocs] = useState(initialDocs)
-  const [answers, setAnswers] = useState(initialAnswers)
+  const [docs, setDocs] = useState<FavDoc[]>([])
+  const [answers, setAnswers] = useState<FavAnswer[]>([])
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function refresh() {
+    setLoading(true)
+    setError(null)
+    try {
+      const [d, a] = await Promise.all([listFavoriteDocuments(), listFavoriteAnswers()])
+      setDocs((d || []).map(mapDoc))
+      setAnswers((a || []).map(mapAnswer))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载收藏失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void refresh()
+  }, [])
 
   const empty = tab === 'docs' ? docs.length === 0 : answers.length === 0
+
+  async function removeDoc(doc: FavDoc) {
+    try {
+      await deleteFavoriteDocument(Number(doc.docId))
+      setDocs((prev) => prev.filter((item) => item.id !== doc.id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '取消收藏失败')
+    }
+  }
+
+  async function removeAnswer(id: string) {
+    try {
+      await deleteFavoriteAnswer(Number(id))
+      setAnswers((prev) => prev.filter((item) => item.id !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '取消收藏失败')
+    }
+  }
 
   return (
     <div className="fvPage">
@@ -111,13 +138,16 @@ function FavoritesPage({ onBack, onRead, onAsk }: FavoritesPageProps) {
       </header>
 
       <main className="fvBody">
-        {empty ? (
+        {loading ? <div className="fvMeta">加载中…</div> : null}
+        {error ? <div className="fvMeta">{error}</div> : null}
+        {!loading && empty ? (
           <div className="fvEmpty">
             <div className="fvEmptyOrb" aria-hidden="true" />
             <h3>收藏常用文档和优质回答，方便下次快速查阅</h3>
             <p>在阅读原文或优质回答时，点击收藏即可加入这里。</p>
           </div>
-        ) : tab === 'docs' ? (
+        ) : null}
+        {!loading && !empty && tab === 'docs' ? (
           <div className="fvList">
             {docs.map((doc) => (
               <article key={doc.id} className="fvCard">
@@ -135,21 +165,17 @@ function FavoritesPage({ onBack, onRead, onAsk }: FavoritesPageProps) {
                       className="fvPrimaryBtn"
                       onClick={() =>
                         onRead({
-                          id: doc.id,
+                          id: doc.docId,
                           title: doc.title,
                           page: doc.page,
                           knowledgeBase: doc.knowledgeBase,
-                          excerpt: doc.title
+                          excerpt: doc.title,
                         })
                       }
                     >
                       阅读
                     </button>
-                    <button
-                      type="button"
-                      className="fvGhostBtn"
-                      onClick={() => setDocs((prev) => prev.filter((item) => item.id !== doc.id))}
-                    >
+                    <button type="button" className="fvGhostBtn" onClick={() => removeDoc(doc)}>
                       <BookmarkMinus size={14} />
                       取消收藏
                     </button>
@@ -158,7 +184,8 @@ function FavoritesPage({ onBack, onRead, onAsk }: FavoritesPageProps) {
               </article>
             ))}
           </div>
-        ) : (
+        ) : null}
+        {!loading && !empty && tab === 'answers' ? (
           <div className="fvList">
             {answers.map((answer) => {
               const open = expanded === answer.id
@@ -199,9 +226,7 @@ function FavoritesPage({ onBack, onRead, onAsk }: FavoritesPageProps) {
                       <button
                         type="button"
                         className="fvGhostBtn"
-                        onClick={() =>
-                          setAnswers((prev) => prev.filter((item) => item.id !== answer.id))
-                        }
+                        onClick={() => removeAnswer(answer.id)}
                       >
                         <BookmarkMinus size={14} />
                         取消收藏
@@ -212,7 +237,7 @@ function FavoritesPage({ onBack, onRead, onAsk }: FavoritesPageProps) {
               )
             })}
           </div>
-        )}
+        ) : null}
       </main>
     </div>
   )

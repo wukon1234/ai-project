@@ -442,3 +442,139 @@ export function searchKnowledge(params: {
 export function searchHot() {
   return request<string[]>('/api/v1/search/hot')
 }
+
+export type LibraryItem = {
+  code: string
+  name: string
+  description?: string
+  docCount?: number
+  tags?: string[] | string
+  updatedAt?: string
+}
+
+export type LibraryDocItem = {
+  id: string | number
+  libraryId: string
+  title: string
+  category: string
+  pages: number
+  updatedAt?: string
+  views?: number
+  page?: number
+  summary?: string
+}
+
+export type HistoryItemApi = {
+  id: number
+  title: string
+  lastQuestion?: string
+  scope?: string
+  updatedAt?: string
+  group?: string
+  rating?: number
+}
+
+export type FavDocApi = {
+  id: number
+  docId: number
+  page?: number
+  title?: string
+  category?: string
+  knowledgeBase?: string
+  savedAt?: string
+}
+
+export type FavAnswerApi = {
+  id: number
+  messageId?: number
+  summary?: string
+  topic?: string
+  source?: string
+  savedAt?: string
+  context?: string[]
+}
+
+export type UserPreferences = {
+  notifyKbUpdate: number
+  notifyMention: number
+  themeMode: string
+  defaultKbScopes: string[]
+}
+
+export type ProfileInfo = {
+  id: number
+  name: string
+  deptName?: string
+  empNo?: string
+  roleCode?: string
+  preferences?: UserPreferences
+}
+
+export function listLibraries() {
+  return request<LibraryItem[]>('/api/v1/libraries')
+}
+
+export function listLibraryDocuments(
+  code: string,
+  params?: { category?: string; q?: string; page?: number; size?: number },
+) {
+  const qs = new URLSearchParams()
+  if (params?.category) qs.set('category', params.category)
+  if (params?.q != null) qs.set('q', params.q)
+  if (params?.page != null) qs.set('page', String(params.page))
+  if (params?.size != null) qs.set('size', String(params.size))
+  const q = qs.toString()
+  return request<{ page: number; size: number; total: number; list: LibraryDocItem[] }>(
+    `/api/v1/libraries/${encodeURIComponent(code)}/documents${q ? `?${q}` : ''}`,
+  )
+}
+
+export function listHistory(keyword?: string) {
+  const q = keyword?.trim() ? `?keyword=${encodeURIComponent(keyword.trim())}` : ''
+  return request<HistoryItemApi[]>(`/api/v1/history${q}`)
+}
+
+export function listFavoriteDocuments() {
+  return request<FavDocApi[]>('/api/v1/favorites/documents')
+}
+
+export function saveFavoriteDocument(docId: number, page?: number) {
+  return request<null>('/api/v1/favorites/documents', {
+    method: 'POST',
+    body: JSON.stringify({ docId, page }),
+  })
+}
+
+export function deleteFavoriteDocument(docId: number) {
+  return request<null>(`/api/v1/favorites/documents/${docId}`, { method: 'DELETE' })
+}
+
+export function listFavoriteAnswers() {
+  return request<FavAnswerApi[]>('/api/v1/favorites/answers')
+}
+
+export function saveFavoriteAnswer(payload: { messageId: number; summary?: string; topic?: string }) {
+  return request<null>('/api/v1/favorites/answers', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function deleteFavoriteAnswer(id: number) {
+  return request<null>(`/api/v1/favorites/answers/${id}`, { method: 'DELETE' })
+}
+
+export function getProfile() {
+  return request<ProfileInfo>('/api/v1/profile')
+}
+
+export function getPreferences() {
+  return request<UserPreferences>('/api/v1/profile/preferences')
+}
+
+export function updatePreferences(prefs: UserPreferences) {
+  return request<UserPreferences>('/api/v1/profile/preferences', {
+    method: 'PUT',
+    body: JSON.stringify(prefs),
+  })
+}

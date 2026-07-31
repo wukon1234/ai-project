@@ -44,7 +44,7 @@ public class BrowseService {
             m.put("description", lib.getDescription());
             m.put("docCount", kbDocumentMapper.selectCount(new LambdaQueryWrapper<KbDocumentEntity>()
                     .eq(KbDocumentEntity::getLibraryCode, lib.getCode())));
-            m.put("tags", lib.getTags());
+            m.put("tags", parseTags(lib.getTags()));
             m.put("updatedAt", lib.getUpdatedAt() == null ? null : lib.getUpdatedAt().format(FMT));
             res.add(m);
         }
@@ -74,15 +74,15 @@ public class BrowseService {
         if (from < to) {
             for (KbDocumentEntity d : filtered.subList(from, to)) {
                 Map<String, Object> m = new HashMap<String, Object>();
-                m.put("id", d.getId());
-                m.put("libraryId", d.getLibraryId());
+                m.put("id", String.valueOf(d.getId()));
+                m.put("libraryId", code);
                 m.put("title", d.getTitle());
-                m.put("category", d.getCategory());
-                m.put("pages", d.getPages());
+                m.put("category", d.getCategory() == null ? "manual" : d.getCategory());
+                m.put("pages", d.getPages() == null ? 0 : d.getPages());
                 m.put("updatedAt", d.getUpdatedAt() == null ? null : d.getUpdatedAt().format(FMT));
-                m.put("views", d.getViewCount());
+                m.put("views", d.getViewCount() == null ? 0 : d.getViewCount());
                 m.put("page", 1);
-                m.put("summary", d.getSummary());
+                m.put("summary", d.getSummary() == null ? "" : d.getSummary());
                 list.add(m);
             }
         }
@@ -92,5 +92,29 @@ public class BrowseService {
         data.put("total", filtered.size());
         data.put("list", list);
         return data;
+    }
+
+    private List<String> parseTags(String raw) {
+        List<String> tags = new ArrayList<String>();
+        if (!StringUtils.hasText(raw)) {
+            return tags;
+        }
+        String text = raw.trim();
+        if (text.startsWith("[")) {
+            String inner = text.substring(1, text.endsWith("]") ? text.length() - 1 : text.length());
+            for (String part : inner.split(",")) {
+                String t = part.trim().replace("\"", "").replace("'", "");
+                if (StringUtils.hasText(t)) {
+                    tags.add(t.startsWith("#") ? t : "#" + t);
+                }
+            }
+            return tags;
+        }
+        for (String part : text.split("[,，\\s]+")) {
+            if (StringUtils.hasText(part)) {
+                tags.add(part.startsWith("#") ? part : "#" + part);
+            }
+        }
+        return tags;
     }
 }

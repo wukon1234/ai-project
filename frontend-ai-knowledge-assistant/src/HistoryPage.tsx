@@ -1,5 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { MessageSquarePlus, Search, Star, Trash2 } from 'lucide-react'
+import {
+  batchDeleteSessions,
+  deleteSession,
+  listHistory,
+  type HistoryItemApi,
+} from './api'
 
 type HistoryItem = {
   id: string
@@ -11,91 +17,95 @@ type HistoryItem = {
   rating?: number
 }
 
-const initialHistory: HistoryItem[] = [
-  {
-    id: 'h1',
-    title: '关于年假和报销的咨询',
-    lastQuestion: '那入职不满一年呢？',
-    scope: '人事制度库',
-    time: '2026-07-28 14:32',
-    group: '今天',
-    rating: 5
-  },
-  {
-    id: 'h2',
-    title: '报销流程咨询',
-    lastQuestion: '差旅发票需要附行程单吗？',
-    scope: '人事制度库',
-    time: '2026-07-28 11:20',
-    group: '今天',
-    rating: 4
-  },
-  {
-    id: 'h3',
-    title: 'A 产品 vs B 产品对比',
-    lastQuestion: '两款产品的售后周期分别是多久？',
-    scope: '产品知识库',
-    time: '2026-07-27 18:06',
-    group: '昨天'
-  },
-  {
-    id: 'h4',
-    title: '新人 onboarding 材料',
-    lastQuestion: '入职第一周要完成哪些培训？',
-    scope: '人事制度库',
-    time: '2026-07-24 09:41',
-    group: '本周',
-    rating: 5
-  },
-  {
-    id: 'h5',
-    title: 'API 鉴权失败排查',
-    lastQuestion: '401 和 403 怎么区分？',
-    scope: '技术文档库',
-    time: '2026-07-10 16:18',
-    group: '更早',
-    rating: 3
-  }
-]
+const scopeLabels: Record<string, string> = {
+  all: '全部知识库',
+  product: '产品知识库',
+  hr: '人事制度库',
+  tech: '技术文档库',
+  support: '售后 FAQ',
+}
 
 const groups: HistoryItem['group'][] = ['今天', '昨天', '本周', '更早']
 
+function mapItem(item: HistoryItemApi): HistoryItem {
+  const scopeCode = (item.scope || '').split(',')[0] || item.scope || ''
+  const group = (['今天', '昨天', '本周', '更早'].includes(item.group || '')
+    ? item.group
+    : '更早') as HistoryItem['group']
+  return {
+    id: String(item.id),
+    title: item.title || '未命名对话',
+    lastQuestion: item.lastQuestion || '',
+    scope: scopeLabels[scopeCode] || item.scope || scopeCode,
+    time: item.updatedAt || '',
+    group,
+    rating: item.rating,
+  }
+}
+
 type HistoryPageProps = {
-  onContinue: (title: string) => void
+  onContinue: (sessionId: number, title: string) => void
   onAskFirst: () => void
   onBack: () => void
 }
 
 function HistoryPage({ onContinue, onAskFirst, onBack }: HistoryPageProps) {
   const [query, setQuery] = useState('')
-  const [items, setItems] = useState(initialHistory)
+  const [committedQuery, setCommittedQuery] = useState('')
+  const [items, setItems] = useState<HistoryItem[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [batchMode, setBatchMode] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return items
-    return items.filter(
-      (item) =>
-        item.title.toLowerCase().includes(q) ||
-        item.lastQuestion.toLowerCase().includes(q) ||
-        item.scope.toLowerCase().includes(q)
-    )
-  }, [items, query])
+  async function refresh(keyword?: string) {
+    setLoading(true)
+    setError(null)
+    try {
+      const list = await listHistory(keyword)
+      setItems((list || []).map(mapItem))
+    } catch (err) {
+      setItems([])
+      setError(err instanceof Error ? err.message : '加载历史失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setCommittedQuery(query.trim())
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [query])
+
+  useEffect(() => {
+    void refresh(committedQuery)
+  }, [committedQuery])
 
   function toggleSelect(id: string) {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
-  function deleteOne(id: string) {
-    setItems((prev) => prev.filter((item) => item.id !== id))
-    setSelected((prev) => prev.filter((x) => x !== id))
+  async function deleteOne(id: string) {
+    try {
+      await deleteSession(Number(id))
+      setItems((prev) => prev.filter((item) => item.id !== id))
+      setSelected((prev) => prev.filter((x) => x !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除失败')
+    }
   }
 
-  function deleteSelected() {
-    setItems((prev) => prev.filter((item) => !selected.includes(item.id)))
-    setSelected([])
-    setBatchMode(false)
+  async function deleteSelected() {
+    try {
+      await batchDeleteSessions(selected.map(Number))
+      setItems((prev) => prev.filter((item) => !selected.includes(item.id)))
+      setSelected([])
+      setBatchMode(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '批量删除失败')
+    }
   }
 
   return (
@@ -145,7 +155,9 @@ function HistoryPage({ onContinue, onAskFirst, onBack }: HistoryPageProps) {
       </header>
 
       <main className="hiBody">
-        {filtered.length === 0 ? (
+        {loading ? <div className="hiMeta">加载中…</div> : null}
+        {error ? <div className="hiMeta">{error}</div> : null}
+        {!loading && items.length === 0 ? (
           <div className="hiEmpty">
             <div className="hiEmptyOrb" aria-hidden="true" />
             <h3>还没有对话记录，去提第一个问题吧</h3>
@@ -157,7 +169,7 @@ function HistoryPage({ onContinue, onAskFirst, onBack }: HistoryPageProps) {
           </div>
         ) : (
           groups.map((group) => {
-            const list = filtered.filter((item) => item.group === group)
+            const list = items.filter((item) => item.group === group)
             if (list.length === 0) return null
             return (
               <section key={group} className="hiGroup">
@@ -197,7 +209,7 @@ function HistoryPage({ onContinue, onAskFirst, onBack }: HistoryPageProps) {
                           <button
                             type="button"
                             className="hiPrimaryBtn"
-                            onClick={() => onContinue(item.title)}
+                            onClick={() => onContinue(Number(item.id), item.title)}
                           >
                             继续对话
                           </button>

@@ -20,6 +20,7 @@ function App() {
   const [view, setView] = useState<AppView>('chat')
   const [activeDoc, setActiveDoc] = useState<SourceDoc | null>(null)
   const [chatSeed, setChatSeed] = useState<string | undefined>(undefined)
+  const [chatSessionId, setChatSessionId] = useState<number | undefined>(undefined)
 
   function loginSuccess() {
     setAuthed(true)
@@ -101,11 +102,13 @@ function App() {
   if (view === 'history') {
     return (
       <HistoryPage
-        onContinue={(title) => {
-          setChatSeed(`继续对话：「${title}」`)
+        onContinue={(sessionId) => {
+          setChatSessionId(sessionId)
+          setChatSeed(undefined)
           setView('chat')
         }}
         onAskFirst={() => {
+          setChatSessionId(undefined)
           setChatSeed(undefined)
           setView('chat')
         }}
@@ -164,13 +167,14 @@ function App() {
 
   return (
     <ChatPage
-      key={chatSeed || 'default-chat'}
+      key={`${chatSessionId || 'new'}-${chatSeed || 'default-chat'}`}
       onOpenSource={setActiveDoc}
       onOpenSearch={() => setView('search')}
       onOpenBrowse={() => setView('browse')}
       onOpenHistory={() => setView('history')}
       onOpenProfile={() => setView('profile')}
       initialQuestion={chatSeed}
+      initialSessionId={chatSessionId}
     />
   )
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   BookOpenText,
+  Bookmark,
   Check,
   ChevronDown,
   Copy,
@@ -26,9 +27,12 @@ import {
   createSession,
   feedbackHelpful,
   feedbackRating,
+  getPreferences,
+  getSession,
   listSessions,
   patchSessionScope,
   regenerateStream,
+  saveFavoriteAnswer,
   shareSession,
   type ChatSession,
   type StreamCitation,
@@ -55,6 +59,7 @@ type ChatPageProps = {
   onOpenHistory: () => void
   onOpenProfile: () => void
   initialQuestion?: string
+  initialSessionId?: number
 }
 
 function ChatPage({
@@ -64,6 +69,7 @@ function ChatPage({
   onOpenHistory,
   onOpenProfile,
   initialQuestion,
+  initialSessionId,
 }: ChatPageProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [sessionId, setSessionId] = useState<number | null>(null)
@@ -109,9 +115,54 @@ function ChatPage({
     booted.current = true
     ;(async () => {
       try {
+        try {
+          const prefs = await getPreferences()
+          const first = (prefs.defaultKbScopes || [])[0] as KnowledgeScopeId | undefined
+          if (first && knowledgeScopes.some((s) => s.id === first)) setSelectedScope(first)
+        } catch {
+          // 偏好可选
+        }
+
         let list = await listSessions()
+        if (initialSessionId && list.find((s) => s.id === initialSessionId)) {
+          setSessions(list)
+          setSessionId(initialSessionId)
+          const detail = await getSession(initialSessionId)
+          const scope = (detail.session.scope?.split(',')[0] || 'hr') as KnowledgeScopeId
+          if (knowledgeScopes.some((s) => s.id === scope)) setSelectedScope(scope)
+          const msgs = detail.messages || []
+          const lastUser = [...msgs].reverse().find((m) => m.role === 'user')
+          const lastAi = [...msgs].reverse().find((m) => m.role === 'assistant')
+          if (lastUser) {
+            setUserQuestion(lastUser.content || '')
+            setLastUserMessageId(lastUser.id)
+          }
+          if (lastAi) {
+            setAnswerText(lastAi.content || '')
+            setAssistantMessageId(lastAi.id)
+            setDoneInfo({
+              messageId: lastAi.id,
+              elapsedMs: lastAi.elapsedMs || 0,
+              status: lastAi.answerStatus || 'OK',
+            })
+            const cites = (detail.citations || [])
+              .filter((c) => c.messageId === lastAi.id)
+              .map((c, idx) => ({
+                index: c.citeIndex || idx + 1,
+                docId: String(c.docId),
+                title: c.title,
+                page: c.pageNo,
+                knowledgeBase: c.libraryName || '',
+                knowledgeBaseId: c.libraryCode || '',
+                excerpt: c.excerpt,
+              }))
+            setCitations(cites)
+          }
+          return
+        }
+
         if (!list.length) {
-          const created = await createSession('hr')
+          const created = await createSession()
           list = [created]
         }
         setSessions(list)
@@ -122,7 +173,7 @@ function ChatPage({
         setBootError(err instanceof Error ? err.message : '会话初始化失败')
       }
     })()
-  }, [])
+  }, [initialSessionId])
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -202,12 +253,16 @@ function ChatPage({
 
   async function onNewChat() {
     try {
-      const created = await createSession(selectedScope)
+      const created = await createSession()
       setUserQuestion(null)
       setAnswerText('')
       setCitations([])
       setDoneInfo(null)
+      setAssistantMessageId(null)
+      setLastUserMessageId(null)
       await refreshSessions(created.id)
+      const scope = (created.scope?.split(',')[0] || selectedScope) as KnowledgeScopeId
+      if (knowledgeScopes.some((s) => s.id === scope)) setSelectedScope(scope)
       setLastActionHint('已创建新对话')
     } catch (err) {
       setLastActionHint(err instanceof Error ? err.message : '创建失败')
@@ -322,6 +377,23 @@ function ChatPage({
       setRatingOpen(false)
     } catch (err) {
       setLastActionHint(err instanceof Error ? err.message : '评分失败')
+    } finally {
+      setFeedbackBusy(false)
+    }
+  }
+
+  async function onFavoriteAnswer() {
+    if (!assistantMessageId || feedbackBusy) return
+    setFeedbackBusy(true)
+    try {
+      await saveFavoriteAnswer({
+        messageId: assistantMessageId,
+        summary: answerText.slice(0, 200),
+        topic: userQuestion?.slice(0, 40) || '收藏回答',
+      })
+      setLastActionHint('回答已收藏')
+    } catch (err) {
+      setLastActionHint(err instanceof Error ? err.message : '收藏失败')
     } finally {
       setFeedbackBusy(false)
     }
@@ -543,6 +615,15 @@ function ChatPage({
                         >
                           <Star size={16} />
                           <span>评分</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="qaInlineBtn"
+                          onClick={onFavoriteAnswer}
+                          disabled={!assistantMessageId || feedbackBusy}
+                        >
+                          <Bookmark size={16} />
+                          <span>收藏回答</span>
                         </button>
                         <button
                           type="button"
