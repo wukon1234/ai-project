@@ -84,6 +84,7 @@ export type StreamCitation = {
 }
 
 export type StreamDone = {
+  messageId?: string | number
   elapsedMs: number
   status: 'OK' | 'NO_ANSWER' | string
   disclaimer?: string
@@ -94,6 +95,35 @@ export type StreamDone = {
     wecom?: string
     extNo?: string
   }
+}
+
+export type FeedbackIssueType =
+  | 'INACCURATE'
+  | 'WRONG_DOC'
+  | 'MISSING_KNOWLEDGE'
+  | 'INCOMPLETE'
+  | 'OTHER'
+
+export type SearchResultItem = {
+  id: string
+  title: string
+  fileType: 'pdf' | 'word' | 'excel' | 'ppt' | 'image' | string
+  category: string
+  knowledgeBase: string
+  pages: number
+  updatedAt: string
+  views: number
+  excerptBefore: string
+  highlights: string[]
+  excerptAfter: string
+  page: number
+}
+
+export type SearchPage = {
+  page: number
+  size: number
+  total: number
+  list: SearchResultItem[]
 }
 
 export type DocumentMeta = {
@@ -149,7 +179,7 @@ function authHeaders(json = true): Record<string, string> {
   return headers
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestResult<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
   const headers: Record<string, string> = {
     ...authHeaders(true),
     ...(init?.headers as Record<string, string> | undefined),
@@ -159,6 +189,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!resp.ok || json.code !== 0) {
     throw new Error(json.message || '请求失败')
   }
+  return json
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const json = await requestResult<T>(path, init)
   return json.data
 }
 
@@ -355,4 +390,55 @@ export function askStream(sessionId: number, question: string, handlers: StreamH
 
 export function regenerateStream(messageId: number, handlers: StreamHandlers) {
   return consumeSse(`/api/v1/chat/messages/${messageId}/regenerate:stream`, undefined, handlers)
+}
+
+export async function feedbackHelpful(messageId: number) {
+  const res = await requestResult<null>('/api/v1/feedback/helpful', {
+    method: 'POST',
+    body: JSON.stringify({ messageId }),
+  })
+  return res.message || '感谢反馈，我们会尽快优化'
+}
+
+export async function feedbackUnhelpful(payload: {
+  messageId: number
+  issueType: FeedbackIssueType
+  comment?: string
+  knowCorrect: boolean
+  correctAnswer?: string
+}) {
+  const res = await requestResult<null>('/api/v1/feedback/unhelpful', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res.message || '感谢反馈，我们会尽快优化'
+}
+
+export async function feedbackRating(messageId: number, score: number) {
+  const res = await requestResult<null>('/api/v1/feedback/rating', {
+    method: 'POST',
+    body: JSON.stringify({ messageId, score }),
+  })
+  return res.message || '感谢反馈，我们会尽快优化'
+}
+
+export function searchKnowledge(params: {
+  q?: string
+  category?: string
+  sort?: 'relevance' | 'updated' | 'views' | string
+  page?: number
+  size?: number
+}) {
+  const qs = new URLSearchParams()
+  if (params.q != null) qs.set('q', params.q)
+  if (params.category) qs.set('category', params.category)
+  if (params.sort) qs.set('sort', params.sort)
+  if (params.page != null) qs.set('page', String(params.page))
+  if (params.size != null) qs.set('size', String(params.size))
+  const q = qs.toString()
+  return request<SearchPage>(`/api/v1/search/knowledge${q ? `?${q}` : ''}`)
+}
+
+export function searchHot() {
+  return request<string[]>('/api/v1/search/hot')
 }

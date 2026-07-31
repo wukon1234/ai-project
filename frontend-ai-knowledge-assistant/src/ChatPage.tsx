@@ -24,6 +24,8 @@ import {
   askStream,
   clearSession,
   createSession,
+  feedbackHelpful,
+  feedbackRating,
   listSessions,
   patchSessionScope,
   regenerateStream,
@@ -76,7 +78,10 @@ function ChatPage({
   const [citations, setCitations] = useState<StreamCitation[]>([])
   const [doneInfo, setDoneInfo] = useState<StreamDone | null>(null)
   const [lastUserMessageId, setLastUserMessageId] = useState<number | null>(null)
+  const [assistantMessageId, setAssistantMessageId] = useState<number | null>(null)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [ratingOpen, setRatingOpen] = useState(false)
+  const [feedbackBusy, setFeedbackBusy] = useState(false)
   const scopeRef = useRef<HTMLDivElement | null>(null)
   const booted = useRef(false)
 
@@ -142,6 +147,8 @@ function ChatPage({
     setCitations([])
     setDoneInfo(null)
     setLastUserMessageId(null)
+    setAssistantMessageId(null)
+    setRatingOpen(false)
 
     let answer = ''
     const cites: StreamCitation[] = []
@@ -160,6 +167,7 @@ function ChatPage({
       },
       onDone: (done) => {
         setDoneInfo(done)
+        if (done.messageId != null) setAssistantMessageId(Number(done.messageId))
         setLastActionHint(
           done.status === 'NO_ANSWER' ? '未找到相关知识' : `回答完成 · ${done.elapsedMs ?? 0}ms`,
         )
@@ -266,9 +274,14 @@ function ChatPage({
     setAnswerText('')
     setCitations([])
     setDoneInfo(null)
+    setAssistantMessageId(null)
+    setRatingOpen(false)
     let answer = ''
     const cites: StreamCitation[] = []
     await regenerateStream(lastUserMessageId, {
+      onMeta: (meta) => {
+        if (meta.messageId) setLastUserMessageId(Number(meta.messageId))
+      },
       onCitation: (c) => {
         cites.push(c)
         setCitations([...cites])
@@ -279,11 +292,39 @@ function ChatPage({
       },
       onDone: (done) => {
         setDoneInfo(done)
+        if (done.messageId != null) setAssistantMessageId(Number(done.messageId))
         setLastActionHint(`已重新回答 · ${done.elapsedMs ?? 0}ms`)
       },
       onError: (err) => setLastActionHint(err.message || '重新回答失败'),
     })
     setIsSending(false)
+  }
+
+  async function onHelpful() {
+    if (!assistantMessageId || feedbackBusy) return
+    setFeedbackBusy(true)
+    try {
+      const message = await feedbackHelpful(assistantMessageId)
+      setLastActionHint(message)
+    } catch (err) {
+      setLastActionHint(err instanceof Error ? err.message : '反馈失败')
+    } finally {
+      setFeedbackBusy(false)
+    }
+  }
+
+  async function onRate(score: number) {
+    if (!assistantMessageId || feedbackBusy) return
+    setFeedbackBusy(true)
+    try {
+      const message = await feedbackRating(assistantMessageId, score)
+      setLastActionHint(`${message} · ${score} 分`)
+      setRatingOpen(false)
+    } catch (err) {
+      setLastActionHint(err instanceof Error ? err.message : '评分失败')
+    } finally {
+      setFeedbackBusy(false)
+    }
   }
 
   const showEmptyAnswer = doneInfo?.status === 'NO_ANSWER'
@@ -476,15 +517,30 @@ function ChatPage({
                       ) : null}
 
                       <div className="qaAnswerToolbar">
-                        <button type="button" className="qaInlineBtn">
+                        <button
+                          type="button"
+                          className="qaInlineBtn"
+                          onClick={onHelpful}
+                          disabled={!assistantMessageId || feedbackBusy}
+                        >
                           <ThumbsUp size={16} />
                           <span>有帮助</span>
                         </button>
-                        <button type="button" className="qaInlineBtn" onClick={() => setFeedbackOpen(true)}>
+                        <button
+                          type="button"
+                          className="qaInlineBtn"
+                          onClick={() => setFeedbackOpen(true)}
+                          disabled={!assistantMessageId || feedbackBusy}
+                        >
                           <ThumbsDown size={16} />
                           <span>没帮助</span>
                         </button>
-                        <button type="button" className="qaInlineBtn">
+                        <button
+                          type="button"
+                          className="qaInlineBtn"
+                          onClick={() => setRatingOpen((v) => !v)}
+                          disabled={!assistantMessageId || feedbackBusy}
+                        >
                           <Star size={16} />
                           <span>评分</span>
                         </button>
@@ -506,6 +562,21 @@ function ChatPage({
                           <span>重新回答</span>
                         </button>
                       </div>
+                      {ratingOpen ? (
+                        <div className="qaRatingRow" role="group" aria-label="回答评分">
+                          {[1, 2, 3, 4, 5].map((score) => (
+                            <button
+                              key={score}
+                              type="button"
+                              className="qaInlineBtn"
+                              disabled={feedbackBusy}
+                              onClick={() => onRate(score)}
+                            >
+                              {score} 分
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ) : (
@@ -582,6 +653,7 @@ function ChatPage({
 
       <FeedbackModal
         open={feedbackOpen}
+        messageId={assistantMessageId}
         onClose={() => setFeedbackOpen(false)}
         onSubmitted={(message) => setLastActionHint(message)}
       />

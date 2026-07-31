@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import {
   ArrowUpRight,
   Eye,
@@ -10,6 +10,7 @@ import {
   Search,
   Sparkles,
 } from 'lucide-react'
+import { searchHot, searchKnowledge, type SearchResultItem } from './api'
 import type { SourceDoc } from './DocumentReader'
 
 type FilterId = 'all' | 'product' | 'hr' | 'tech' | 'support'
@@ -36,117 +37,50 @@ const filters: Array<{ id: FilterId; label: string }> = [
   { id: 'product', label: '产品' },
   { id: 'hr', label: '人事' },
   { id: 'tech', label: '技术' },
-  { id: 'support', label: '售后' }
+  { id: 'support', label: '售后' },
 ]
 
 const sorts: Array<{ id: SortId; label: string }> = [
   { id: 'relevant', label: '最相关' },
   { id: 'newest', label: '最新更新' },
-  { id: 'popular', label: '最多浏览' }
+  { id: 'popular', label: '最多浏览' },
 ]
 
-const hotSearches = ['报销流程', '年假规定', '产品 A 规格', '考勤制度']
+const sortApiMap: Record<SortId, 'relevance' | 'updated' | 'views'> = {
+  relevant: 'relevance',
+  newest: 'updated',
+  popular: 'views',
+}
 
-const allResults: SearchResult[] = [
-  {
-    id: 'd1',
-    title: '《2026 年度报销管理制度》',
-    fileType: 'pdf',
-    category: 'hr',
-    knowledgeBase: '人事制度库',
-    pages: 12,
-    updatedAt: '2026-03-15',
-    views: 234,
-    excerptBefore: '…',
-    highlights: ['报销', '30 日内'],
-    excerptAfter: '提交…',
-    page: 5
-  },
-  {
-    id: 'd2',
-    title: '《员工手册 2026 版》',
-    fileType: 'word',
-    category: 'hr',
-    knowledgeBase: '人事制度库',
-    pages: 86,
-    updatedAt: '2026-02-20',
-    views: 512,
-    excerptBefore: '员工',
-    highlights: ['年假'],
-    excerptAfter: '天数与工龄相关，入职满 1 年不满 10 年可休 5 天…',
-    page: 23
-  },
-  {
-    id: 'd3',
-    title: '产品 A 技术规格说明书',
-    fileType: 'ppt',
-    category: 'product',
-    knowledgeBase: '产品知识库',
-    pages: 28,
-    updatedAt: '2026-04-02',
-    views: 188,
-    excerptBefore: '产品 A 支持双模通信，关键',
-    highlights: ['规格'],
-    excerptAfter: '参数详见第 6 章对照表…',
-    page: 6
-  },
-  {
-    id: 'd4',
-    title: '考勤制度与弹性工时说明',
-    fileType: 'excel',
-    category: 'hr',
-    knowledgeBase: '人事制度库',
-    pages: 4,
-    updatedAt: '2026-01-18',
-    views: 301,
-    excerptBefore: '标准工时为每日 8 小时，',
-    highlights: ['考勤'],
-    excerptAfter: '异常需在 3 个工作日内完成补卡…',
-    page: 1
-  },
-  {
-    id: 'd5',
-    title: '售后常见故障排查手册',
-    fileType: 'pdf',
-    category: 'support',
-    knowledgeBase: '售后 FAQ',
-    pages: 42,
-    updatedAt: '2026-03-28',
-    views: 156,
-    excerptBefore: '设备无法开机时，请先检查电源与',
-    highlights: ['售后'],
-    excerptAfter: '热线登记流程…',
-    page: 3
-  },
-  {
-    id: 'd6',
-    title: '内部 API 网关接入指南',
-    fileType: 'word',
-    category: 'tech',
-    knowledgeBase: '技术文档库',
-    pages: 19,
-    updatedAt: '2026-05-10',
-    views: 97,
-    excerptBefore: '鉴权采用 Bearer Token，请求头需携带',
-    highlights: ['技术'],
-    excerptAfter: '签名校验字段…',
-    page: 2
-  },
-  {
-    id: 'd7',
-    title: '产品包装与标识规范图示',
-    fileType: 'image',
-    category: 'product',
-    knowledgeBase: '产品知识库',
-    pages: 1,
-    updatedAt: '2026-02-08',
-    views: 76,
-    excerptBefore: '外包装需印制防伪码与',
-    highlights: ['产品'],
-    excerptAfter: '批次追溯二维码…',
-    page: 1
+const HOT_FALLBACK = ['报销流程', '年假规定', '产品A规格', '考勤制度']
+
+function toFileType(value: string | undefined): FileType {
+  const t = (value || 'pdf').toLowerCase()
+  if (t === 'word' || t === 'excel' || t === 'ppt' || t === 'image' || t === 'pdf') return t
+  return 'pdf'
+}
+
+function toCategory(value: string | undefined): Exclude<FilterId, 'all'> {
+  if (value === 'product' || value === 'hr' || value === 'tech' || value === 'support') return value
+  return 'hr'
+}
+
+function mapResult(item: SearchResultItem): SearchResult {
+  return {
+    id: String(item.id),
+    title: item.title || '未命名文档',
+    fileType: toFileType(item.fileType),
+    category: toCategory(item.category),
+    knowledgeBase: item.knowledgeBase || item.category || '',
+    pages: item.pages ?? 0,
+    updatedAt: item.updatedAt || '',
+    views: item.views ?? 0,
+    excerptBefore: item.excerptBefore || '',
+    highlights: Array.isArray(item.highlights) ? item.highlights : [],
+    excerptAfter: item.excerptAfter || '',
+    page: item.page ?? 1,
   }
-]
+}
 
 function FileTypeIcon({ type }: { type: FileType }) {
   const map: Record<FileType, { icon: ReactNode; label: string; className: string }> = {
@@ -154,7 +88,7 @@ function FileTypeIcon({ type }: { type: FileType }) {
     word: { icon: <FileText size={18} />, label: 'Word', className: 'ksFileWord' },
     excel: { icon: <FileSpreadsheet size={18} />, label: 'Excel', className: 'ksFileExcel' },
     ppt: { icon: <Presentation size={18} />, label: 'PPT', className: 'ksFilePpt' },
-    image: { icon: <FileImage size={18} />, label: '图片', className: 'ksFileImage' }
+    image: { icon: <FileImage size={18} />, label: '图片', className: 'ksFileImage' },
   }
   const item = map[type]
   return (
@@ -168,23 +102,9 @@ function FileTypeIcon({ type }: { type: FileType }) {
 function highlightExcerpt(result: SearchResult) {
   const nodes: ReactNode[] = [result.excerptBefore]
   result.highlights.forEach((word, index) => {
-    nodes.push(
-      <mark key={`${result.id}-h-${index}`}>
-        {word}
-      </mark>
-    )
-    if (index < result.highlights.length - 1) {
-      nodes.push(index === 0 ? '需在费用发生后 ' : ' ')
-    }
+    nodes.push(<mark key={`${result.id}-h-${index}`}>{word}</mark>)
+    if (index < result.highlights.length - 1) nodes.push(' ')
   })
-  // Special-case first sample card to match the brief wording closely.
-  if (result.id === 'd1') {
-    return (
-      <>
-        …<mark>报销</mark>需在费用发生后 <mark>30 日内</mark>提交…
-      </>
-    )
-  }
   nodes.push(result.excerptAfter)
   return nodes
 }
@@ -196,36 +116,66 @@ type KnowledgeSearchProps = {
 }
 
 function KnowledgeSearch({ onAsk, onRead, onAskAboutDoc }: KnowledgeSearchProps) {
-  const [query, setQuery] = useState('报销')
+  const [query, setQuery] = useState('')
+  const [committedQuery, setCommittedQuery] = useState('')
   const [filter, setFilter] = useState<FilterId>('all')
   const [sort, setSort] = useState<SortId>('relevant')
+  const [results, setResults] = useState<SearchResult[]>([])
+  const [total, setTotal] = useState(0)
+  const [hotSearches, setHotSearches] = useState<string[]>(HOT_FALLBACK)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    let list = allResults.filter((item) => {
-      const matchFilter = filter === 'all' || item.category === filter
-      if (!matchFilter) return false
-      if (!q) return true
-      return (
-        item.title.toLowerCase().includes(q) ||
-        item.excerptBefore.toLowerCase().includes(q) ||
-        item.excerptAfter.toLowerCase().includes(q) ||
-        item.highlights.some((h) => h.toLowerCase().includes(q)) ||
-        item.knowledgeBase.toLowerCase().includes(q)
-      )
-    })
-
-    if (sort === 'newest') {
-      list = [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    } else if (sort === 'popular') {
-      list = [...list].sort((a, b) => b.views - a.views)
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const hot = await searchHot()
+        if (alive && Array.isArray(hot) && hot.length) setHotSearches(hot)
+      } catch {
+        // 热搜失败时保留种子词
+      }
+    })()
+    return () => {
+      alive = false
     }
+  }, [])
 
-    return list
-  }, [filter, query, sort])
+  useEffect(() => {
+    let alive = true
+    const timer = window.setTimeout(async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const data = await searchKnowledge({
+          q: committedQuery,
+          category: filter,
+          sort: sortApiMap[sort],
+          page: 1,
+          size: 20,
+        })
+        if (!alive) return
+        const list = (data?.list || []).map(mapResult)
+        setResults(list)
+        setTotal(data?.total ?? list.length)
+      } catch (err) {
+        if (!alive) return
+        setResults([])
+        setTotal(0)
+        setError(err instanceof Error ? err.message : '搜索失败')
+      } finally {
+        if (alive) setLoading(false)
+      }
+    }, 250)
+    return () => {
+      alive = false
+      window.clearTimeout(timer)
+    }
+  }, [committedQuery, filter, sort])
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
+    setCommittedQuery(query.trim())
   }
 
   return (
@@ -285,12 +235,16 @@ function KnowledgeSearch({ onAsk, onRead, onAskAboutDoc }: KnowledgeSearchProps)
       <div className="ksBody">
         <main className="ksMain">
           <div className="ksResultMeta">
-            {results.length > 0
-              ? `找到 ${results.length} 条相关知识`
-              : '没有匹配结果'}
+            {loading
+              ? '搜索中…'
+              : error
+                ? error
+                : results.length > 0
+                  ? `找到 ${total} 条相关知识`
+                  : '没有匹配结果'}
           </div>
 
-          {results.length > 0 ? (
+          {!loading && !error && results.length > 0 ? (
             <div className="ksResultList">
               {results.map((item) => (
                 <article key={item.id} className="ksResultCard">
@@ -322,7 +276,7 @@ function KnowledgeSearch({ onAsk, onRead, onAskAboutDoc }: KnowledgeSearchProps)
                             title: item.title,
                             page: item.page,
                             knowledgeBase: item.knowledgeBase,
-                            excerpt: item.highlights.join(' ')
+                            excerpt: item.highlights.join(' '),
                           })
                         }
                       >
@@ -342,17 +296,19 @@ function KnowledgeSearch({ onAsk, onRead, onAskAboutDoc }: KnowledgeSearchProps)
                 </article>
               ))}
             </div>
-          ) : (
+          ) : null}
+
+          {!loading && !error && results.length === 0 ? (
             <div className="ksEmpty">
               <div className="ksEmptyOrb" aria-hidden="true" />
               <h3>未找到相关内容，试试 AI 问答？</h3>
               <p>问答会在你有权限的知识库中检索，并附上来源可追溯。</p>
-              <button type="button" className="ksEmptyBtn" onClick={() => onAsk(query)}>
+              <button type="button" className="ksEmptyBtn" onClick={() => onAsk(query || committedQuery)}>
                 <Sparkles size={16} />
                 去 AI 问答
               </button>
             </div>
-          )}
+          ) : null}
         </main>
 
         <aside className="ksHotPanel" aria-label="热门搜索">
@@ -360,7 +316,13 @@ function KnowledgeSearch({ onAsk, onRead, onAskAboutDoc }: KnowledgeSearchProps)
           <ol className="ksHotList">
             {hotSearches.map((term, index) => (
               <li key={term}>
-                <button type="button" onClick={() => setQuery(term)}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery(term)
+                    setCommittedQuery(term)
+                  }}
+                >
                   <span className="ksHotRank">{index + 1}</span>
                   <span>{term}</span>
                 </button>

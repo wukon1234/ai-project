@@ -1,35 +1,67 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
+import { feedbackUnhelpful, type FeedbackIssueType } from './api'
 
 const feedbackTypes = [
-  '答案不准确',
-  '引用了错误的文档',
-  '没有找到应该有的知识',
-  '回答不完整',
-  '其他'
-] as const
+  { label: '答案不准确', value: 'INACCURATE' as const },
+  { label: '引用了错误的文档', value: 'WRONG_DOC' as const },
+  { label: '没有找到应该有的知识', value: 'MISSING_KNOWLEDGE' as const },
+  { label: '回答不完整', value: 'INCOMPLETE' as const },
+  { label: '其他', value: 'OTHER' as const },
+]
 
 type FeedbackModalProps = {
   open: boolean
+  messageId: number | null
   onClose: () => void
   onSubmitted: (message: string) => void
 }
 
-function FeedbackModal({ open, onClose, onSubmitted }: FeedbackModalProps) {
-  const [type, setType] = useState<(typeof feedbackTypes)[number]>('答案不准确')
+function FeedbackModal({ open, messageId, onClose, onSubmitted }: FeedbackModalProps) {
+  const [issueType, setIssueType] = useState<FeedbackIssueType>('INACCURATE')
   const [note, setNote] = useState('')
   const [knowAnswer, setKnowAnswer] = useState(false)
   const [correctAnswer, setCorrectAnswer] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   if (!open) return null
 
-  function onSubmit() {
-    onSubmitted('感谢反馈，我们会尽快优化 🙏')
+  function resetForm() {
     setNote('')
     setCorrectAnswer('')
     setKnowAnswer(false)
-    setType('答案不准确')
-    onClose()
+    setIssueType('INACCURATE')
+    setError(null)
+  }
+
+  async function onSubmit() {
+    if (!messageId) {
+      setError('缺少回答消息，请先完成一次问答')
+      return
+    }
+    if (knowAnswer && !correctAnswer.trim()) {
+      setError('勾选「我知道正确答案」时请填写正确答案')
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    try {
+      const message = await feedbackUnhelpful({
+        messageId,
+        issueType,
+        comment: note.trim() || undefined,
+        knowCorrect: knowAnswer,
+        correctAnswer: knowAnswer ? correctAnswer.trim() : undefined,
+      })
+      onSubmitted(message)
+      resetForm()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '提交失败')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -56,14 +88,14 @@ function FeedbackModal({ open, onClose, onSubmitted }: FeedbackModalProps) {
             <div className="fbLabel">问题类型</div>
             <div className="fbRadioList">
               {feedbackTypes.map((item) => (
-                <label key={item} className={`fbRadio ${type === item ? 'fbRadioActive' : ''}`}>
+                <label key={item.value} className={`fbRadio ${issueType === item.value ? 'fbRadioActive' : ''}`}>
                   <input
                     type="radio"
                     name="feedback-type"
-                    checked={type === item}
-                    onChange={() => setType(item)}
+                    checked={issueType === item.value}
+                    onChange={() => setIssueType(item.value)}
                   />
-                  <span>{item}</span>
+                  <span>{item.label}</span>
                 </label>
               ))}
             </div>
@@ -98,14 +130,16 @@ function FeedbackModal({ open, onClose, onSubmitted }: FeedbackModalProps) {
               />
             ) : null}
           </div>
+
+          {error ? <div className="fbError" role="alert">{error}</div> : null}
         </div>
 
         <div className="fbFooter">
-          <button type="button" className="fbCancel" onClick={onClose}>
+          <button type="button" className="fbCancel" onClick={onClose} disabled={submitting}>
             取消
           </button>
-          <button type="button" className="fbSubmit" onClick={onSubmit}>
-            提交反馈
+          <button type="button" className="fbSubmit" onClick={onSubmit} disabled={submitting}>
+            {submitting ? '提交中…' : '提交反馈'}
           </button>
         </div>
       </div>

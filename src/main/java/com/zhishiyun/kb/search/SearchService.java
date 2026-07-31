@@ -143,19 +143,35 @@ public class SearchService {
         String text = row.getChunk() != null ? row.getChunk().getContent() : (doc.getSummary() == null ? "" : doc.getSummary());
         Highlight h = highlight(text, q);
         Map<String, Object> m = new HashMap<String, Object>();
-        m.put("id", doc.getId());
+        m.put("id", String.valueOf(doc.getId()));
         m.put("title", doc.getTitle());
-        m.put("fileType", doc.getFileType());
-        m.put("category", doc.getCategory());
+        m.put("fileType", normalizeFileType(doc.getFileType()));
+        // 前端 SearchResult.category 对齐知识库筛选项（product/hr/tech/support）
+        m.put("category", doc.getLibraryCode());
         m.put("knowledgeBase", lib == null ? doc.getLibraryCode() : lib.getName());
-        m.put("pages", doc.getPages());
+        m.put("pages", doc.getPages() == null ? 0 : doc.getPages());
         m.put("updatedAt", doc.getUpdatedAt() == null ? null : doc.getUpdatedAt().format(FMT));
-        m.put("views", doc.getViewCount());
+        m.put("views", doc.getViewCount() == null ? 0 : doc.getViewCount());
         m.put("excerptBefore", h.getBefore());
         m.put("highlights", h.getHighlights());
         m.put("excerptAfter", h.getAfter());
-        m.put("page", row.getChunk() == null ? 1 : row.getChunk().getPageNo());
+        m.put("page", row.getChunk() == null || row.getChunk().getPageNo() == null ? 1 : row.getChunk().getPageNo());
         return m;
+    }
+
+    private String normalizeFileType(String fileType) {
+        if (!StringUtils.hasText(fileType)) {
+            return "pdf";
+        }
+        String t = fileType.trim().toLowerCase();
+        if ("pdf".equals(t) || "word".equals(t) || "excel".equals(t) || "ppt".equals(t) || "image".equals(t)) {
+            return t;
+        }
+        if (t.contains("doc")) return "word";
+        if (t.contains("xls") || t.contains("csv")) return "excel";
+        if (t.contains("ppt")) return "ppt";
+        if (t.contains("png") || t.contains("jpg") || t.contains("jpeg") || t.contains("gif")) return "image";
+        return "pdf";
     }
 
     private Highlight highlight(String source, String q) {

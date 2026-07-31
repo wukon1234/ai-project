@@ -149,6 +149,7 @@ public class ChatStreamService {
                 chatCitationMapper.insert(cite);
             }
             send(emitter, "done", mapOf(
+                    "messageId", String.valueOf(aiMsg.getId()),
                     "elapsedMs", System.currentTimeMillis() - start,
                     "status", "OK",
                     "disclaimer", "AI 可能出错，请以原文为准"));
@@ -175,6 +176,7 @@ public class ChatStreamService {
         aiMsg.setElapsedMs((int) (System.currentTimeMillis() - start));
         chatMessageMapper.insert(aiMsg);
         send(emitter, "done", mapOf(
+                "messageId", String.valueOf(aiMsg.getId()),
                 "elapsedMs", System.currentTimeMillis() - start,
                 "status", "NO_ANSWER",
                 "disclaimer", "AI 可能出错，请以原文为准",

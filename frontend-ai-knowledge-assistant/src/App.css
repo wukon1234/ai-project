@@ -380,6 +380,13 @@
   gap: 10px;
 }
 
+.qaRatingRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .qaInlineBtn {
   padding: 8px 12px;
   font-size: 13px;
@@ -2485,6 +2492,12 @@ html[data-theme='dark'] {
 
 .fbCorrect {
   margin-top: 10px;
+}
+
+.fbError {
+  margin-top: 8px;
+  color: #b42318;
+  font-size: 13px;
 }
 
 .fbFooter {
