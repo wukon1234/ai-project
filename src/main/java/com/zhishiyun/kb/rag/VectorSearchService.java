@@ -33,6 +33,7 @@ public class VectorSearchService {
     @Value("${kb.rag.hybrid-enabled:false}")
     private boolean hybridEnabled;
 
+    /** 多库检索：hybrid 开启时走 RRF，否则关键词/向量打分。 */
     public List<SearchHit> search(String question, Set<String> libraryScopes, int topK) {
         if (libraryScopes == null || libraryScopes.isEmpty()) {
             return java.util.Collections.emptyList();
@@ -45,6 +46,7 @@ public class VectorSearchService {
         return rank(question, chunks, topK, null);
     }
 
+    /** 单文档内检索（同文档问答）。 */
     public List<SearchHit> searchInDoc(String question, Long docId, int topK) {
         List<KbChunkEntity> chunks = kbChunkMapper.selectList(new LambdaQueryWrapper<KbChunkEntity>()
                 .eq(KbChunkEntity::getDocId, docId));
@@ -54,6 +56,7 @@ public class VectorSearchService {
         return rank(question, chunks, topK, null);
     }
 
+    /** 同文档相关片段：以当前页文本为种子，可排除本页。 */
     public List<SearchHit> relatedInDoc(Long docId, Integer pageNo, String seedText, int topK) {
         List<KbChunkEntity> chunks = kbChunkMapper.selectList(new LambdaQueryWrapper<KbChunkEntity>()
                 .eq(KbChunkEntity::getDocId, docId));

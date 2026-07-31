@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+/** 知识浏览：按 ACL 返回库树与文档列表。 */
 @Service
 @RequiredArgsConstructor
 public class BrowseService {
@@ -28,6 +29,7 @@ public class BrowseService {
     private final KbLibraryMapper kbLibraryMapper;
     private final KbDocumentMapper kbDocumentMapper;
 
+    /** 返回用户有权访问的知识库树。 */
     public List<Map<String, Object>> libraries(Long userId) {
         List<String> scopes = kbAclMapper.selectList(new LambdaQueryWrapper<KbAclEntity>().eq(KbAclEntity::getUserId, userId))
                 .stream().map(KbAclEntity::getLibraryCode).distinct().collect(Collectors.toList());
@@ -49,6 +51,7 @@ public class BrowseService {
         return res;
     }
 
+    /** 某库下文档分页列表（支持分类与关键词）。 */
     public Map<String, Object> libraryDocs(Long userId, String code, String category, String q, int page, int size) {
         List<String> scopes = kbAclMapper.selectList(new LambdaQueryWrapper<KbAclEntity>().eq(KbAclEntity::getUserId, userId))
                 .stream().map(KbAclEntity::getLibraryCode).distinct().collect(Collectors.toList());

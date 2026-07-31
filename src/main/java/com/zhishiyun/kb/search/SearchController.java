@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 知识搜索 API。 */
 @RestController
 @RequestMapping("/api/v1/search")
 @RequiredArgsConstructor
@@ -17,6 +18,7 @@ public class SearchController {
 
     private final SearchService searchService;
 
+    /** 知识搜索（向量 + 元数据过滤）。 */
     @GetMapping("/knowledge")
     public Result<Map<String, Object>> searchKnowledge(
             Authentication auth,
@@ -29,6 +31,7 @@ public class SearchController {
         return Result.ok(searchService.search(user.getUserId(), q, category, sort, page, size));
     }
 
+    /** 热搜词。 */
     @GetMapping("/hot")
     public Result<?> hot() {
         return Result.ok(searchService.hotWords());

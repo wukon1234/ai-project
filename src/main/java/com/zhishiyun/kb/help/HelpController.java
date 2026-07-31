@@ -17,6 +17,7 @@ public class HelpController {
 
     private final HelpService helpService;
 
+    /** FAQ 列表，按 locale 过滤。 */
     @GetMapping("/faqs")
     public Result<List<Map<String, Object>>> faqs(
             @RequestParam(value = "locale", defaultValue = "zh-CN") String locale) {

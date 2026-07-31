@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 知识浏览 API。 */
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
@@ -17,12 +18,14 @@ public class BrowseController {
 
     private final BrowseService browseService;
 
+    /** 知识库树（按用户 ACL 过滤）。 */
     @GetMapping("/libraries")
     public Result<?> libraries(Authentication auth) {
         AuthUser user = (AuthUser) auth.getPrincipal();
         return Result.ok(browseService.libraries(user.getUserId()));
     }
 
+    /** 指定知识库下的文档分页列表。 */
     @GetMapping("/libraries/{code}/documents")
     public Result<?> libraryDocs(
             Authentication auth,

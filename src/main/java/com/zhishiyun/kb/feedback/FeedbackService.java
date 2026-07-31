@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** 问答反馈：有帮助/没帮助/评分，写 feedback 并埋点。 */
 @Service
 @RequiredArgsConstructor
 public class FeedbackService {
@@ -30,12 +31,14 @@ public class FeedbackService {
     private final UsageEventMapper usageEventMapper;
 
     @Transactional
+    /** 标记有帮助。 */
     public void helpful(Long userId, HelpfulRequest request) {
         ChatMessageEntity message = validateOwnAssistantMessage(userId, request.getMessageId());
         upsertFeedback(userId, message, "HELPFUL", null, null, null);
     }
 
     @Transactional
+    /** 标记没帮助（含问题类型与补充说明）。 */
     public void unhelpful(Long userId, UnhelpfulRequest request) {
         if (Boolean.TRUE.equals(request.getKnowCorrect())
                 && (request.getCorrectAnswer() == null || request.getCorrectAnswer().trim().isEmpty())) {
@@ -57,6 +60,7 @@ public class FeedbackService {
     }
 
     @Transactional
+    /** 会话整体评分。 */
     public void rating(Long userId, RatingRequest request) {
         ChatMessageEntity message = validateOwnAssistantMessage(userId, request.getMessageId());
         upsertFeedback(userId, message, "RATING", null, null, null);

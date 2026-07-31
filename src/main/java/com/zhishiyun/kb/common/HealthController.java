@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 健康检查。 */
 @RestController
 @RequestMapping("/api/v1/health")
 @RequiredArgsConstructor
@@ -17,6 +18,7 @@ public class HealthController {
 
     private final KbLibraryMapper kbLibraryMapper;
 
+    /** 探测数据库连通性（查知识库表计数）。 */
     @GetMapping("/db")
     public Result<Map<String, Object>> db() {
         long cnt = kbLibraryMapper.selectCount(new LambdaQueryWrapper<KbLibraryEntity>());

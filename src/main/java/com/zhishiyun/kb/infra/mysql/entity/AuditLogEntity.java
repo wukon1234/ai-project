@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import lombok.Data;
 
+/** 审计日志，对应 audit_log。 */
 @Data
 @TableName("audit_log")
 public class AuditLogEntity {

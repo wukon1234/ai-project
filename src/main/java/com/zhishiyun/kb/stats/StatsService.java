@@ -53,6 +53,7 @@ public class StatsService {
     @Value("${kb.stats.minutes-saved-per-ask:4}")
     private int minutesSavedPerAsk;
 
+    /** 聚合指定时间窗内的 KPI、趋势、分布与成就等。 */
     public Map<String, Object> overview(Long userId, String range, String from, String to) {
         RangeWindow window = resolveRange(range, from, to);
         List<UsageEventEntity> events = loadEvents(userId, window.from, window.to);
@@ -105,6 +106,7 @@ public class StatsService {
         return data;
     }
 
+    /** 导出概览 KPI 为 CSV（含 UTF-8 BOM）。 */
     public byte[] exportCsv(Long userId, String range, String from, String to) {
         Map<String, Object> overview = overview(userId, range, from, to);
         try {

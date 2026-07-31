@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import lombok.Data;
 
+/** 回答引用片段，对应 chat_citation。 */
 @Data
 @TableName("chat_citation")
 public class ChatCitationEntity {

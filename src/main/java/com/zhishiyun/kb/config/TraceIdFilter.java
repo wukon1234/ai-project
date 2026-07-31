@@ -22,6 +22,7 @@ public class TraceIdFilter extends OncePerRequestFilter {
     public static final String HEADER = "X-Trace-Id";
     public static final String MDC_KEY = "traceId";
 
+    /** 优先复用请求头中的 traceId，否则生成新 UUID。 */
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {

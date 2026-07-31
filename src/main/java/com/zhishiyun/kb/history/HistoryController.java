@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 问答历史 API。 */
 @RestController
 @RequestMapping("/api/v1/history")
 @RequiredArgsConstructor
@@ -16,6 +17,7 @@ public class HistoryController {
 
     private final HistoryService historyService;
 
+    /** 问答历史列表，支持关键词过滤。 */
     @GetMapping
     public Result<?> history(Authentication auth, @RequestParam(value = "keyword", required = false) String keyword) {
         AuthUser user = (AuthUser) auth.getPrincipal();

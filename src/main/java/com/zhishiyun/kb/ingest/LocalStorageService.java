@@ -13,12 +13,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+/** 本地文件存储：按 UUID 落盘，返回 storageKey。 */
 @Service
 public class LocalStorageService {
 
     @Value("${kb.storage.local-dir:data/storage}")
     private String localDir;
 
+    /** 保存上传文件，返回 storageKey（UUID + 扩展名）。 */
     public String save(MultipartFile file) {
         String ext = getExtension(file.getOriginalFilename());
         String key = UUID.randomUUID().toString() + ext;
@@ -33,10 +35,12 @@ public class LocalStorageService {
         }
     }
 
+    /** 按 storageKey 定位本地文件。 */
     public File getFile(String key) {
         return Paths.get(localDir, key).toFile();
     }
 
+    /** 从原始文件名取扩展名，缺省为 .pdf。 */
     private String getExtension(String filename) {
         if (filename == null || !filename.contains(".")) {
             return ".pdf";

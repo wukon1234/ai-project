@@ -2,6 +2,7 @@ package com.zhishiyun.kb.common;
 
 import lombok.Getter;
 
+/** 业务异常，携带 ErrorCode。 */
 @Getter
 public class BizException extends RuntimeException {
 

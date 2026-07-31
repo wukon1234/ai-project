@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+/** 用户偏好（主题、通知、默认知识库），对应 user_preference。 */
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("user_preference")

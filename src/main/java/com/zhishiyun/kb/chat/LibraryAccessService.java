@@ -10,12 +10,14 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+/** 将会话 scope 与用户 ACL 求交，得到实际可检索知识库集合。 */
 @Service
 @RequiredArgsConstructor
 public class LibraryAccessService {
 
     private final KbAclMapper kbAclMapper;
 
+    /** scope 为 all/空时返回全部 ACL；否则与请求库求交。 */
     public Set<String> resolveScopes(Long userId, String scope) {
         Set<String> aclScopes = kbAclMapper.selectList(new LambdaQueryWrapper<KbAclEntity>()
                         .eq(KbAclEntity::getUserId, userId))

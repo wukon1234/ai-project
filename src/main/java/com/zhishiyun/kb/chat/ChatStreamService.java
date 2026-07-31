@@ -36,6 +36,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+/** 会话流式问答：ACL 范围内检索 → 引用 → SSE 推送答案。 */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -58,12 +59,17 @@ public class ChatStreamService {
     @Value("${kb.rag.context-n:6}")
     private int contextN;
 
+    /** 发起会话流式问答，立即返回 SSE emitter。 */
     public SseEmitter askStream(Long userId, Long sessionId, String question) {
         SseEmitter emitter = new SseEmitter(0L);
         process(emitter, userId, sessionId, question);
         return emitter;
     }
 
+    /**
+     * 问答主流程：落用户消息 → 检索 → 推送 citation/delta → 落助手消息与引用。
+     * SSE 事件：meta / citation / delta / done / error。
+     */
     @Transactional
     protected void process(SseEmitter emitter, Long userId, Long sessionId, String question) {
         long start = System.currentTimeMillis();
@@ -90,6 +96,7 @@ public class ChatStreamService {
                     "messageId", String.valueOf(userMsg.getId()),
                     "status", "SEARCHING",
                     "traceId", traceId == null ? "" : traceId));
+            // scope ∩ ACL 后检索；低于阈值则走 NO_ANSWER
             Set<String> scopes = libraryAccessService.resolveScopes(userId, session.getScope());
             List<SearchHit> hits = vectorSearchService.search(question, scopes, 20);
 
@@ -156,6 +163,7 @@ public class ChatStreamService {
         }
     }
 
+    /** 无命中：返回引导建议与业务联系人（默认 HR）。 */
     private void noAnswer(SseEmitter emitter, Long userId, Long sessionId, long start) throws IOException {
         BizContactEntity contact = bizContactMapper.selectOne(new LambdaQueryWrapper<BizContactEntity>()
                 .eq(BizContactEntity::getLibraryCode, "hr").last("limit 1"));
@@ -179,6 +187,7 @@ public class ChatStreamService {
         emitter.complete();
     }
 
+    /** 基于检索片段拼装回答（后续可替换为 LLM 生成）。 */
     private String buildAnswer(List<SearchHit> hits) {
         StringBuilder builder = new StringBuilder();
         builder.append("根据检索到的资料：\n");

@@ -18,6 +18,7 @@ public class HelpService {
 
     private final HelpFaqMapper helpFaqMapper;
 
+    /** 按 locale 返回 FAQ 列表（缺省 zh-CN）。 */
     public List<Map<String, Object>> listFaqs(String locale) {
         String loc = StringUtils.hasText(locale) ? locale : "zh-CN";
         List<HelpFaqEntity> rows = helpFaqMapper.selectList(new LambdaQueryWrapper<HelpFaqEntity>()

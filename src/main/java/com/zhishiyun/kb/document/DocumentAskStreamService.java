@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+/** 同文档流式问答：仅在当前文档分块内检索并 SSE 推送。 */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -38,12 +39,14 @@ public class DocumentAskStreamService {
     @Value("${kb.rag.context-n:6}")
     private int contextN;
 
+    /** 同文档流式问答入口。 */
     public SseEmitter askStream(Long userId, Long docId, String question) {
         SseEmitter emitter = new SseEmitter(0L);
         process(emitter, userId, docId, question);
         return emitter;
     }
 
+    /** 校验文档权限后仅在该 doc 内检索，推送 citation/delta/done。 */
     private void process(SseEmitter emitter, Long userId, Long docId, String question) {
         long start = System.currentTimeMillis();
         try {

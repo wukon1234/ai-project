@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+/** 内部入库 API（X-Internal-Api-Key），不对 C 端开放。 */
 @Validated
 @RestController
 @RequestMapping("/api/v1/internal/ingest")
@@ -29,6 +30,7 @@ public class IngestController {
     @Value("${kb.internal.api-key}")
     private String internalApiKey;
 
+    /** 上传文档触发入库。 */
     @PostMapping("/documents")
     public Result<IngestUploadResponse> upload(
             @RequestHeader("X-Internal-Api-Key") String apiKey,
@@ -40,6 +42,7 @@ public class IngestController {
         return Result.ok(ingestService.upload(file, libraryCode, title, category));
     }
 
+    /** 查询入库任务状态。 */
     @GetMapping("/tasks/{taskId}")
     public Result<IngestTaskResponse> task(
             @RequestHeader("X-Internal-Api-Key") String apiKey,
@@ -48,6 +51,7 @@ public class IngestController {
         return Result.ok(ingestService.task(taskId));
     }
 
+    /** 对已有文档重新解析并写入向量库。 */
     @PostMapping("/reindex/{docId}")
     public Result<IngestUploadResponse> reindex(
             @RequestHeader("X-Internal-Api-Key") String apiKey,
@@ -56,6 +60,7 @@ public class IngestController {
         return Result.ok(ingestService.reindex(docId));
     }
 
+    /** 校验内部 API Key。 */
     private void validateApiKey(String apiKey) {
         if (!internalApiKey.equals(apiKey)) {
             throw new BizException(ErrorCode.UNAUTHORIZED);

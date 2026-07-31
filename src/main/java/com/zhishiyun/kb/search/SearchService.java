@@ -26,6 +26,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+/** 知识搜索：ACL 过滤、关键词匹配、热搜与排序分页。 */
 @Service
 @RequiredArgsConstructor
 public class SearchService {
@@ -40,6 +41,7 @@ public class SearchService {
     private final UsageEventMapper usageEventMapper;
     private final StringRedisTemplate redisTemplate;
 
+    /** 在用户有权知识库内搜索文档，支持分类过滤与排序分页。 */
     public Map<String, Object> search(Long userId, String q, String category, String sort, int page, int size) {
         List<String> scopes = kbAclMapper.selectList(new LambdaQueryWrapper<KbAclEntity>().eq(KbAclEntity::getUserId, userId))
                 .stream().map(KbAclEntity::getLibraryCode).distinct().collect(Collectors.toList());
@@ -101,6 +103,7 @@ public class SearchService {
         return data;
     }
 
+    /** 热搜词：优先 Redis，否则返回内置种子词。 */
     public List<String> hotWords() {
         java.util.Set<org.springframework.data.redis.core.ZSetOperations.TypedTuple<String>> tuples =
                 redisTemplate.opsForZSet().reverseRangeWithScores("search:hot", 0, 9);

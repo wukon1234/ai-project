@@ -8,6 +8,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+/** 已认证用户主体，承载 userId 与角色。 */
 @Getter
 @AllArgsConstructor
 public class AuthUser implements UserDetails {

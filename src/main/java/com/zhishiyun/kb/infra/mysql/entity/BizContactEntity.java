@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+/** 业务联系人（如 HR），对应 biz_contact。 */
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("biz_contact")

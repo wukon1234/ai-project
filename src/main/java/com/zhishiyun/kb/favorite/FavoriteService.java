@@ -24,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** 收藏：文档收藏与回答收藏。 */
 @Service
 @RequiredArgsConstructor
 public class FavoriteService {
@@ -35,6 +36,7 @@ public class FavoriteService {
     private final UsageEventMapper usageEventMapper;
     private final DocumentService documentService;
 
+    /** 文档收藏列表。 */
     public List<Map<String, Object>> listDocs(Long userId) {
         List<FavDocumentEntity> favs = favDocumentMapper.selectList(new LambdaQueryWrapper<FavDocumentEntity>()
                 .eq(FavDocumentEntity::getUserId, userId)
@@ -51,6 +53,7 @@ public class FavoriteService {
         }).collect(Collectors.toList());
     }
 
+    /** 收藏文档（幂等）。 */
     @Transactional
     public void saveDoc(Long userId, FavoriteDocumentRequest request) {
         documentService.getPermittedDocument(userId, request.getDocId());
@@ -71,6 +74,7 @@ public class FavoriteService {
         usage(userId, "FAVORITE", String.valueOf(request.getDocId()));
     }
 
+    /** 取消文档收藏。 */
     @Transactional
     public void deleteDoc(Long userId, Long docId) {
         favDocumentMapper.delete(new LambdaQueryWrapper<FavDocumentEntity>()
@@ -78,6 +82,7 @@ public class FavoriteService {
                 .eq(FavDocumentEntity::getDocId, docId));
     }
 
+    /** 回答收藏列表。 */
     public List<Map<String, Object>> listAnswers(Long userId) {
         return favAnswerMapper.selectList(new LambdaQueryWrapper<FavAnswerEntity>()
                         .eq(FavAnswerEntity::getUserId, userId)
@@ -92,6 +97,7 @@ public class FavoriteService {
                 }).collect(Collectors.toList());
     }
 
+    /** 收藏助手回答。 */
     @Transactional
     public void saveAnswer(Long userId, FavoriteAnswerRequest request) {
         ChatMessageEntity msg = chatMessageMapper.selectById(request.getMessageId());
@@ -119,6 +125,7 @@ public class FavoriteService {
         usage(userId, "FAVORITE", String.valueOf(request.getMessageId()));
     }
 
+    /** 取消回答收藏。 */
     @Transactional
     public void deleteAnswer(Long userId, Long id) {
         favAnswerMapper.delete(new LambdaQueryWrapper<FavAnswerEntity>()
@@ -126,6 +133,7 @@ public class FavoriteService {
                 .eq(FavAnswerEntity::getId, id));
     }
 
+    /** 收藏埋点。 */
     private void usage(Long userId, String event, String refId) {
         UsageEventEntity u = new UsageEventEntity();
         u.setUserId(userId);

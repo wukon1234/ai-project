@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+/** 基于 Tesseract 的本地 OCR；置信度按文本长度粗估。 */
 @Slf4j
 @Service
 public class JavaOcrService {
@@ -22,6 +23,7 @@ public class JavaOcrService {
     @Value("${kb.ocr.tessdata-path:}")
     private String tessDataPath;
 
+    /** 对页面图像做 OCR；失败返回空文本与 0 置信度。 */
     public OcrResult recognize(BufferedImage image) {
         if (!enabled) {
             return new OcrResult("", 0D);
@@ -40,6 +42,7 @@ public class JavaOcrService {
         }
     }
 
+    /** 按识别文本长度粗估置信度（非 Tesseract 原生分数）。 */
     private Double estimateConfidence(String text) {
         if (!StringUtils.hasText(text)) {
             return 0D;

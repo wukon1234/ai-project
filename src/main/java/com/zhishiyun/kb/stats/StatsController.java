@@ -21,6 +21,7 @@ public class StatsController {
 
     private final StatsService statsService;
 
+    /** 使用统计概览（KPI / 趋势 / 分布）。 */
     @GetMapping("/overview")
     public Result<Map<String, Object>> overview(
             Authentication auth,
@@ -31,6 +32,7 @@ public class StatsController {
         return Result.ok(statsService.overview(user.getUserId(), range, from, to));
     }
 
+    /** 导出统计 CSV（UTF-8 BOM，便于 Excel 打开）。 */
     @GetMapping("/export")
     public ResponseEntity<byte[]> export(
             Authentication auth,

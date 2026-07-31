@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import lombok.Data;
 
+/** Refresh Token 哈希存储，对应 sys_refresh_token。 */
 @Data
 @TableName("sys_refresh_token")
 public class SysRefreshTokenEntity {

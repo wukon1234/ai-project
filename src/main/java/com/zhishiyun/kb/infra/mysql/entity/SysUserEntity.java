@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+/** 系统用户，对应 sys_user。 */
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("sys_user")

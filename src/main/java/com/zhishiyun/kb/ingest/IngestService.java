@@ -35,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import javax.imageio.ImageIO;
 
+/** 知识入库：上传落盘 → 异步解析（PDF/OCR/Vision）→ 分块入库。 */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -51,6 +52,7 @@ public class IngestService {
     private final KbPageVisionMapper kbPageVisionMapper;
     private final VisionClient visionClient;
 
+    /** 上传 PDF/图片：落盘建档，创建 PENDING 任务并异步解析。 */
     @Transactional
     public IngestUploadResponse upload(MultipartFile file, String libraryCode, String title, String category) {
         if (file == null || file.isEmpty()) {
@@ -89,6 +91,7 @@ public class IngestService {
         return new IngestUploadResponse(document.getId(), task.getId());
     }
 
+    /** 查询入库任务进度。 */
     public IngestTaskResponse task(Long taskId) {
         IngestTaskEntity task = ingestTaskMapper.selectById(taskId);
         if (task == null) {
@@ -97,6 +100,7 @@ public class IngestService {
         return new IngestTaskResponse(task.getStatus(), task.getProgress(), task.getErrorMsg());
     }
 
+    /** 清空旧分块并重新解析索引。 */
     @Transactional
     public IngestUploadResponse reindex(Long docId) {
         KbDocumentEntity document = kbDocumentMapper.selectById(docId);
@@ -115,6 +119,7 @@ public class IngestService {
         return new IngestUploadResponse(docId, task.getId());
     }
 
+    /** 异步解析：抽文本/OCR/Vision → 分块入库 → READY/FAILED。 */
     @Async("ingestExecutor")
     @Transactional
     public void parseAsync(Long taskId, Long docId) {
@@ -145,6 +150,9 @@ public class IngestService {
         }
     }
 
+    /**
+     * 逐页提取：优先 PDFBox 文本；空白/过短页走 OCR；低置信度可调用 Vision。
+     */
     private List<PageText> extractPdf(Long docId, File pdf, IngestTaskEntity task) throws IOException {
         List<PageText> pages = new ArrayList<PageText>();
         int visionUsed = 0;
@@ -159,6 +167,7 @@ public class IngestService {
                 String text = normalize(stripper.getText(document));
                 Double confidence = null;
                 BufferedImage image = null;
+                // 扫描件/空白页：渲染后 OCR
                 if (!StringUtils.hasText(text) || text.length() < 20) {
                     image = renderer.renderImageWithDPI(i - 1, 172);
                     JavaOcrService.OcrResult ocr = javaOcrService.recognize(image);
@@ -217,6 +226,7 @@ public class IngestService {
         return pages;
     }
 
+    /** 按页分块（默认 500 字、overlap 100）。 */
     private List<KbChunkEntity> buildChunks(KbDocumentEntity document, List<PageText> pages) {
         List<KbChunkEntity> result = new ArrayList<KbChunkEntity>();
         int idx = 0;

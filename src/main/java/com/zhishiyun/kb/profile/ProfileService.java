@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+/** 个人中心：资料查询与偏好（主题、默认知识库等）。 */
 @Service
 @RequiredArgsConstructor
 public class ProfileService {
@@ -26,6 +27,7 @@ public class ProfileService {
     private final UserPreferenceMapper userPreferenceMapper;
     private final KbAclMapper kbAclMapper;
 
+    /** 个人资料。 */
     public Map<String, Object> profile(Long userId) {
         SysUserEntity user = sysUserMapper.selectById(userId);
         if (user == null) throw new BizException(ErrorCode.UNAUTHORIZED);
@@ -40,10 +42,12 @@ public class ProfileService {
         return m;
     }
 
+    /** 查询偏好设置。 */
     public Map<String, Object> preferences(Long userId) {
         return prefMap(getOrCreatePref(userId));
     }
 
+    /** 更新主题、通知与默认知识库 scope。 */
     public Map<String, Object> updatePreferences(Long userId, PreferenceRequest req) {
         validateScopes(userId, req.getDefaultKbScopes());
         UserPreferenceEntity pref = getOrCreatePref(userId);
@@ -55,6 +59,7 @@ public class ProfileService {
         return prefMap(pref);
     }
 
+    /** 新建会话时使用的默认知识库 scope。 */
     public List<String> defaultScopes(Long userId) {
         UserPreferenceEntity pref = getOrCreatePref(userId);
         return parseScopes(pref.getDefaultKbScopes());

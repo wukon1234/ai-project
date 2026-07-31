@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import lombok.Data;
 
+/** 问答反馈记录，对应 feedback_record。 */
 @Data
 @TableName("feedback_record")
 public class FeedbackRecordEntity {

@@ -16,11 +16,13 @@ public class ShareController {
 
     private final ShareService shareService;
 
+    /** 按 token 只读访问分享会话。 */
     @GetMapping("/sessions/{token}")
     public Result<Map<String, Object>> session(@PathVariable String token) {
         return Result.ok(shareService.readSessionByToken(token));
     }
 
+    /** 按 token 只读访问分享文档元数据。 */
     @GetMapping("/documents/{token}")
     public Result<Map<String, Object>> document(@PathVariable String token) {
         return Result.ok(shareService.readDocumentByToken(token));

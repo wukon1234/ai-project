@@ -6,9 +6,11 @@ import org.apache.ibatis.reflection.MetaObject;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/** MyBatis-Plus 分页与自动填充配置。 */
 @Configuration
 public class MybatisPlusConfig {
 
+    /** createdAt / updatedAt 自动填充。 */
     @Bean
     public MetaObjectHandler metaObjectHandler() {
         return new MetaObjectHandler() {

@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+/** 问答会话，对应 chat_session。 */
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("chat_session")

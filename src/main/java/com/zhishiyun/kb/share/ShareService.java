@@ -41,6 +41,7 @@ public class ShareService {
     @Value("${kb.share.require-login:false}")
     private boolean requireLogin;
 
+    /** 为会话生成分享 token，并写审计日志。 */
     @Transactional
     public Map<String, Object> shareSession(Long userId, Long sessionId) {
         ChatSessionEntity session = chatSessionService.owned(userId, sessionId);
@@ -54,6 +55,7 @@ public class ShareService {
         return data;
     }
 
+    /** 按 token 读取分享会话（只读消息列表）。 */
     public Map<String, Object> readSessionByToken(String token) {
         ChatSessionEntity session = chatSessionMapper.selectOne(new LambdaQueryWrapper<ChatSessionEntity>()
                 .eq(ChatSessionEntity::getShareToken, token)
@@ -79,6 +81,7 @@ public class ShareService {
         return data;
     }
 
+    /** 按 token 读取分享文档元数据。 */
     public Map<String, Object> readDocumentByToken(String token) {
         Long docId = documentService.resolveSharedDocId(token);
         KbDocumentEntity doc = kbDocumentMapper.selectById(docId);
@@ -96,6 +99,7 @@ public class ShareService {
         return data;
     }
 
+    /** 写入分享相关审计日志。 */
     private void writeAudit(Long userId, String action, String targetType, String targetId) {
         AuditLogEntity log = new AuditLogEntity();
         log.setUserId(userId);

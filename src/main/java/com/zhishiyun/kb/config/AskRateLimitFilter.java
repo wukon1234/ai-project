@@ -34,6 +34,7 @@ public class AskRateLimitFilter extends OncePerRequestFilter {
     @Value("${kb.rate-limit.enabled:true}")
     private boolean enabled;
 
+    /** 仅对会话流式问答与同文档问答路径生效。 */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         if (!enabled) {
@@ -43,6 +44,7 @@ public class AskRateLimitFilter extends OncePerRequestFilter {
         return !(path != null && (path.contains("/messages:stream") || path.contains("/ask:stream")));
     }
 
+    /** Redis 滑动分钟窗口计数；超限返回 429。 */
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {

@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 账号鉴权 API：登录注册、JWT 刷新、SSO、忘记密码。 */
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -27,27 +28,32 @@ public class AuthController {
 
     private final AuthService authService;
 
+    /** 邮箱/手机号登录。 */
     @PostMapping("/login")
     public Result<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return Result.ok(authService.login(request));
     }
 
+    /** 企业邮箱注册。 */
     @PostMapping("/register")
     public Result<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
         return Result.ok(authService.register(request));
     }
 
+    /** 刷新 access token。 */
     @PostMapping("/refresh")
     public Result<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request) {
         return Result.ok(authService.refresh(request));
     }
 
+    /** 登出：吊销 refresh token。 */
     @PostMapping("/logout")
     public Result<Void> logout(@RequestBody(required = false) Map<String, String> payload) {
         authService.logout(payload == null ? null : payload.get("refreshToken"));
         return Result.ok(null);
     }
 
+    /** 当前用户资料。 */
     @GetMapping("/me")
     public Result<AuthResponse> me(Authentication authentication) {
         AuthUser principal = (AuthUser) authentication.getPrincipal();
@@ -68,11 +74,13 @@ public class AuthController {
         return Result.ok(authService.ssoCallback(code));
     }
 
+    /** 发送重置密码令牌（防枚举，始终成功）。 */
     @PostMapping("/password/forgot")
     public Result<Map<String, Object>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
         return Result.ok(authService.forgotPassword(request));
     }
 
+    /** 使用令牌重置密码。 */
     @PostMapping("/password/reset")
     public Result<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         authService.resetPassword(request);

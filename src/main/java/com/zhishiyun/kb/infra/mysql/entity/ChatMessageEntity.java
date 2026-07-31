@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import lombok.Data;
 
+/** 会话消息，对应 chat_message。 */
 @Data
 @TableName("chat_message")
 public class ChatMessageEntity {

@@ -30,6 +30,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** 原文阅读：元数据、下载、ACL 校验、浏览埋点与分享 token。 */
 @Service
 @RequiredArgsConstructor
 public class DocumentService {
@@ -57,6 +58,7 @@ public class DocumentService {
     @Value("${kb.share.base-url:http://localhost:8080}")
     private String shareBaseUrl;
 
+    /** 文档元数据；带 Redis 短缓存，并记录浏览。 */
     public DocumentMetaResponse meta(Long userId, Long docId) {
         KbDocumentEntity doc = getPermittedDocument(userId, docId);
         String key = CACHE_PREFIX + docId;
@@ -90,6 +92,7 @@ public class DocumentService {
         return response;
     }
 
+    /** 返回原文文件（预览或下载），需通过 ACL。 */
     public File file(Long userId, Long docId, boolean download) {
         KbDocumentEntity doc = getPermittedDocument(userId, docId);
         writeAudit(userId, download ? "DOWNLOAD_DOC" : "PREVIEW_DOC", "document", String.valueOf(docId));
@@ -131,9 +134,7 @@ public class DocumentService {
         return next;
     }
 
-    /**
-     * 生成文档分享短链；敏感库可按配置禁止外链。
-     */
+    /** 生成文档分享短链；敏感库可按配置禁止外链。 */
     public Map<String, Object> createShare(Long userId, Long docId) {
         KbDocumentEntity doc = getPermittedDocument(userId, docId);
         String blocked = shareBlockedLibraries;
@@ -171,6 +172,7 @@ public class DocumentService {
         }
     }
 
+    /** 校验文档存在且用户具备库权限，否则抛 FORBIDDEN。 */
     public KbDocumentEntity getPermittedDocument(Long userId, Long docId) {
         KbDocumentEntity doc = kbDocumentMapper.selectById(docId);
         if (doc == null) {

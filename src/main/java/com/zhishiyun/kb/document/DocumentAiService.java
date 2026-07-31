@@ -22,6 +22,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+/** 阅读器 AI：页摘要缓存、同文档相关片段检索。 */
 @Service
 @RequiredArgsConstructor
 public class DocumentAiService {
@@ -35,6 +36,7 @@ public class DocumentAiService {
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 
+    /** 页摘要：先读 Redis 缓存，未命中则由当页分块拼接生成。 */
     public PageSummaryResponse pageSummary(Long userId, Long docId, Integer pageNo) {
         if (pageNo == null || pageNo < 1) {
             throw new BizException(ErrorCode.PARAM_INVALID, "pageNo 无效");
@@ -73,6 +75,7 @@ public class DocumentAiService {
         return response;
     }
 
+    /** 同文档相关片段：以当前页内容为种子做检索。 */
     public List<RelatedChunkResponse> relatedChunks(Long userId, Long docId, Integer pageNo, Integer limit) {
         KbDocumentEntity doc = documentService.getPermittedDocument(userId, docId);
         int topK = (limit == null || limit < 1) ? 5 : Math.min(limit, 20);
@@ -97,6 +100,7 @@ public class DocumentAiService {
         return hits.stream().map(h -> toRelated(doc, h.getChunk())).collect(Collectors.toList());
     }
 
+    /** 拼接指定页全部分块文本。 */
     public String loadPageText(Long docId, Integer pageNo) {
         List<KbChunkEntity> chunks = kbChunkMapper.selectList(new LambdaQueryWrapper<KbChunkEntity>()
                 .eq(KbChunkEntity::getDocId, docId)
@@ -117,6 +121,7 @@ public class DocumentAiService {
         return sb.toString().trim();
     }
 
+    /** 抽取式摘要：优先按句号截断，否则截到约 180 字。 */
     String buildExtractiveSummary(String pageText) {
         String normalized = pageText.replaceAll("\\s+", " ").trim();
         if (normalized.length() <= 180) {

@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+/** 问答历史：会话列表按今天/昨天/本周等分组。 */
 @Service
 @RequiredArgsConstructor
 public class HistoryService {
@@ -22,6 +23,7 @@ public class HistoryService {
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final ChatSessionMapper chatSessionMapper;
 
+    /** 返回会话历史，附带时间分组标签（今天/昨天/本周等）。 */
     public List<Map<String, Object>> history(Long userId, String keyword) {
         List<ChatSessionEntity> sessions = chatSessionMapper.selectList(new LambdaQueryWrapper<ChatSessionEntity>()
                 .eq(ChatSessionEntity::getUserId, userId)
@@ -50,6 +52,7 @@ public class HistoryService {
         return source != null && source.toLowerCase().contains(k.toLowerCase());
     }
 
+    /** 按相对日期打分组标签，供前端分区展示。 */
     private String group(LocalDateTime dt) {
         if (dt == null) return "更早";
         LocalDate d = dt.toLocalDate();

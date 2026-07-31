@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import lombok.Data;
 
+/** 用户-知识库访问控制，对应 kb_acl。 */
 @Data
 @TableName("kb_acl")
 public class KbAclEntity {

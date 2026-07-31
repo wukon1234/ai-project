@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import lombok.Data;
 
+/** 文档分块，对应 kb_chunk。 */
 @Data
 @TableName("kb_chunk")
 public class KbChunkEntity {

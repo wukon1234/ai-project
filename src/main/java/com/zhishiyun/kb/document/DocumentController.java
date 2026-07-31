@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+/** 文档阅读 API：元数据/文件流/分享/页摘要/相关片段/同文档问答。 */
 @RestController
 @RequestMapping("/api/v1/documents")
 @RequiredArgsConstructor
@@ -37,12 +38,14 @@ public class DocumentController {
     private final DocumentAiService documentAiService;
     private final DocumentAskStreamService documentAskStreamService;
 
+    /** 文档元数据（含收藏态、浏览埋点）。 */
     @GetMapping("/{id}")
     public Result<DocumentMetaResponse> meta(Authentication auth, @PathVariable Long id) {
         AuthUser user = (AuthUser) auth.getPrincipal();
         return Result.ok(documentService.meta(user.getUserId(), id));
     }
 
+    /** 原文预览/下载流。 */
     @GetMapping("/{id}/file")
     public ResponseEntity<InputStreamResource> file(
             Authentication auth,
@@ -58,6 +61,7 @@ public class DocumentController {
                 .body(new InputStreamResource(new FileInputStream(file)));
     }
 
+    /** 浏览埋点（打开原文 / 阅读完成等）。 */
     @PostMapping("/{id}/view")
     public Result<Map<String, Object>> view(
             Authentication auth,
@@ -72,12 +76,14 @@ public class DocumentController {
         return Result.ok(data);
     }
 
+    /** 生成文档分享短链。 */
     @PostMapping("/{id}/share")
     public Result<Map<String, Object>> share(Authentication auth, @PathVariable Long id) {
         AuthUser user = (AuthUser) auth.getPrincipal();
         return Result.ok(documentService.createShare(user.getUserId(), id));
     }
 
+    /** 指定页 AI 摘要（带 Redis 缓存）。 */
     @GetMapping("/{id}/pages/{pageNo}/summary")
     public Result<PageSummaryResponse> pageSummary(
             Authentication auth,
@@ -87,6 +93,7 @@ public class DocumentController {
         return Result.ok(documentAiService.pageSummary(user.getUserId(), id, pageNo));
     }
 
+    /** 同文档相关片段推荐。 */
     @GetMapping("/{id}/related-chunks")
     public Result<List<RelatedChunkResponse>> relatedChunks(
             Authentication auth,
@@ -97,6 +104,7 @@ public class DocumentController {
         return Result.ok(documentAiService.relatedChunks(user.getUserId(), id, pageNo, limit));
     }
 
+    /** 同文档流式问答（SSE）。 */
     @PostMapping(value = "/{id}/ask:stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter askStream(
             Authentication auth,

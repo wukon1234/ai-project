@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+/** 知识库，对应 kb_library。 */
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("kb_library")

@@ -41,6 +41,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+/** 账号鉴权：登录/注册/刷新/登出、SSO 与密码重置。 */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -76,6 +77,7 @@ public class AuthService {
     @Value("${kb.sso.frontend-redirect:http://localhost:5173/auth/callback}")
     private String ssoFrontendRedirect;
 
+    /** 邮箱或手机号登录，支持 rememberMe 延长 refresh 有效期。 */
     @Transactional
     public AuthResponse login(LoginRequest request) {
         SysUserEntity user = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUserEntity>()
@@ -94,6 +96,7 @@ public class AuthService {
         return response;
     }
 
+    /** 企业邮箱注册；可配置自动审批，并初始化默认偏好与角色。 */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         if (!isEmailAllowed(request.getEmail())) {
@@ -126,6 +129,7 @@ public class AuthService {
         return buildTokens(user, false);
     }
 
+    /** 校验并轮换 refresh token，签发新的 access/refresh。 */
     @Transactional
     public AuthResponse refresh(RefreshRequest request) {
         String hash = sha256(request.getRefreshToken());
@@ -144,6 +148,7 @@ public class AuthService {
         return buildTokens(user, token.getRememberMe() == 1);
     }
 
+    /** 吊销 refresh token（幂等）。 */
     @Transactional
     public void logout(String refreshToken) {
         if (!StringUtils.hasText(refreshToken)) {
@@ -159,6 +164,7 @@ public class AuthService {
         }
     }
 
+    /** 当前登录用户资料（不含 token）。 */
     public AuthResponse me(Long userId) {
         SysUserEntity user = sysUserMapper.selectById(userId);
         if (user == null) {
@@ -170,6 +176,7 @@ public class AuthService {
                 .build();
     }
 
+    /** 签发 access JWT，并将 refresh 的 SHA-256 哈希落库。 */
     private AuthResponse buildTokens(SysUserEntity user, boolean rememberMe) {
         String accessToken = jwtService.createAccessToken(user.getId(), user.getRoleCode());
         String refreshToken = UUID.randomUUID() + "-" + UUID.randomUUID();

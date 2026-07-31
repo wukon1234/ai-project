@@ -16,6 +16,7 @@ public class UsageEventService {
 
     private final UsageEventMapper usageEventMapper;
 
+    /** 写入一条使用事件；userId/eventType 为空时直接跳过。 */
     public void track(Long userId, String eventType, String libraryCode, String refId, String extraJson) {
         if (userId == null || eventType == null || eventType.trim().isEmpty()) {
             return;

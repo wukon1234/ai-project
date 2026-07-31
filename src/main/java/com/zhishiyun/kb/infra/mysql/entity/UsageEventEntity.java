@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import lombok.Data;
 
+/** 使用埋点事件，对应 usage_event。 */
 @Data
 @TableName("usage_event")
 public class UsageEventEntity {

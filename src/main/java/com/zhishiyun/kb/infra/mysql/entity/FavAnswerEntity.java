@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import lombok.Data;
 
+/** 回答收藏，对应 fav_answer。 */
 @Data
 @TableName("fav_answer")
 public class FavAnswerEntity {

@@ -7,6 +7,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+/** 统一异常处理，输出 {code,message,data}。 */
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {

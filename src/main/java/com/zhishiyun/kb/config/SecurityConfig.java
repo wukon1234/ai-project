@@ -15,6 +15,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+/** Spring Security：无状态 JWT；放行登录/SSO/分享/帮助/内部入库等。 */
 @Configuration
 @RequiredArgsConstructor
 public class SecurityConfig {
@@ -23,6 +24,7 @@ public class SecurityConfig {
     private final AskRateLimitFilter askRateLimitFilter;
     private final ObjectMapper objectMapper;
 
+    /** 无状态 JWT 过滤器链；放行登录/SSO/分享/帮助/内部入库等公开路径。 */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.csrf().disable()
@@ -58,6 +60,7 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /** BCrypt 密码编码器。 */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(10);

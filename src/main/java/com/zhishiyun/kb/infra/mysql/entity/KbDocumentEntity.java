@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+/** 知识文档元数据，对应 kb_document。 */
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("kb_document")
