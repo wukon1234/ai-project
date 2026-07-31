@@ -137,10 +137,11 @@ function KnowledgeBrowse({ onAsk, onRead, onBackHome }: KnowledgeBrowseProps) {
         const list = await listLibraries()
         if (!alive) return
         setLibraries((list || []).map(mapLibrary).filter(Boolean) as KnowledgeLibrary[])
-      } catch (err) {
+      } catch {
         if (alive) {
-          const msg = err instanceof Error ? err.message : '加载知识库失败'
-          if (msg !== '系统错误') setError(msg)
+          setLibraries([])
+          // 技术异常走空态，不展示报错日志
+          setError(null)
         }
       } finally {
         if (alive) setLoading(false)
@@ -168,12 +169,12 @@ function KnowledgeBrowse({ onAsk, onRead, onBackHome }: KnowledgeBrowseProps) {
         const list = (data?.list || []).map((d) => mapDoc(d, activeLibraryId))
         setDocs(list)
         setTotal(data?.total ?? list.length)
-      } catch (err) {
+      } catch {
         if (!alive) return
         setDocs([])
         setTotal(0)
-        const msg = err instanceof Error ? err.message : '加载文档失败'
-        if (msg !== '系统错误') setError(msg)
+        // 技术异常走空态，不展示报错日志
+        setError(null)
       } finally {
         if (alive) setLoading(false)
       }

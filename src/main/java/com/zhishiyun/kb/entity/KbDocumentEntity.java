@@ -11,8 +11,6 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = true)
 @TableName("kb_document")
 public class KbDocumentEntity extends BaseEntity {
-    // 文档ID
-    private Long documentId;
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long libraryId;

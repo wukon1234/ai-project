@@ -158,13 +158,12 @@ function KnowledgeSearch({ onAsk, onRead, onAskAboutDoc }: KnowledgeSearchProps)
         const list = (data?.list || []).map(mapResult)
         setResults(list)
         setTotal(data?.total ?? list.length)
-      } catch (err) {
+      } catch {
         if (!alive) return
         setResults([])
         setTotal(0)
-        const msg = err instanceof Error ? err.message : '搜索失败'
-        // 无数据或后端兜底错误时走空态，避免误报「系统错误」
-        if (msg !== '系统错误') setError(msg)
+        // 技术异常（含 SQL/堆栈）一律走空态，不把报错日志展示给用户
+        setError(null)
       } finally {
         if (alive) setLoading(false)
       }
