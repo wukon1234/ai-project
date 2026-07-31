@@ -64,6 +64,9 @@ kb:
     endpoint: ${KB_LLM_ENDPOINT:https://api.openai.com/v1}
     api-key: ${KB_LLM_API_KEY:}
   ocr:
+    enabled: ${KB_OCR_ENABLED:true}
+    lang: ${KB_OCR_LANG:chi_sim+eng}
+    tessdata-path: ${KB_OCR_TESSDATA_PATH:}
     endpoint: ${KB_OCR_ENDPOINT:}
     api-key: ${KB_OCR_API_KEY:}
   minio:

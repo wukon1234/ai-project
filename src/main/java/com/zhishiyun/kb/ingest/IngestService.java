@@ -11,10 +11,13 @@ import com.zhishiyun.kb.infra.mysql.entity.IngestTaskEntity;
 import com.zhishiyun.kb.infra.mysql.entity.KbChunkEntity;
 import com.zhishiyun.kb.infra.mysql.entity.KbDocumentEntity;
 import com.zhishiyun.kb.infra.mysql.entity.KbLibraryEntity;
+import com.zhishiyun.kb.infra.mysql.entity.KbPageVisionEntity;
 import com.zhishiyun.kb.infra.mysql.mapper.IngestTaskMapper;
 import com.zhishiyun.kb.infra.mysql.mapper.KbChunkMapper;
 import com.zhishiyun.kb.infra.mysql.mapper.KbDocumentMapper;
 import com.zhishiyun.kb.infra.mysql.mapper.KbLibraryMapper;
+import com.zhishiyun.kb.infra.mysql.mapper.KbPageVisionMapper;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -23,11 +26,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.springframework.util.StringUtils;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import javax.imageio.ImageIO;
 
 @Slf4j
 @Service
@@ -41,14 +47,17 @@ public class IngestService {
     private final LocalStorageService localStorageService;
     private final ChunkerService chunkerService;
     private final StringRedisTemplate redisTemplate;
+    private final JavaOcrService javaOcrService;
+    private final KbPageVisionMapper kbPageVisionMapper;
 
     @Transactional
     public IngestUploadResponse upload(MultipartFile file, String libraryCode, String title, String category) {
         if (file == null || file.isEmpty()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "文件不能为空");
         }
-        if (!String.valueOf(file.getOriginalFilename()).toLowerCase().endsWith(".pdf")) {
-            throw new BizException(ErrorCode.PARAM_INVALID, "仅支持 PDF");
+        String name = String.valueOf(file.getOriginalFilename()).toLowerCase();
+        if (!(name.endsWith(".pdf") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg"))) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "仅支持 PDF/图片");
         }
         KbLibraryEntity library = kbLibraryMapper.selectOne(new LambdaQueryWrapper<KbLibraryEntity>()
                 .eq(KbLibraryEntity::getCode, libraryCode)
@@ -62,7 +71,7 @@ public class IngestService {
         document.setLibraryId(library.getId());
         document.setLibraryCode(library.getCode());
         document.setTitle((title == null || title.trim().isEmpty()) ? file.getOriginalFilename() : title);
-        document.setFileType(FileType.pdf.name());
+        document.setFileType(resolveFileType(name));
         document.setCategory(category);
         document.setStorageKey(storageKey);
         document.setStatus(DocStatus.PARSING.name());
@@ -112,9 +121,9 @@ public class IngestService {
         KbDocumentEntity document = kbDocumentMapper.selectById(docId);
         try {
             updateTask(task, "RUNNING", 5, null);
-            File pdf = localStorageService.getFile(document.getStorageKey());
-            List<PageText> pages = extractPages(pdf);
-            updateTask(task, "RUNNING", 45, null);
+            File file = localStorageService.getFile(document.getStorageKey());
+            List<PageText> pages = "image".equals(document.getFileType()) ? extractImage(document.getId(), file) : extractPdf(document.getId(), file, task);
+            updateTask(task, "RUNNING", 75, null);
             List<KbChunkEntity> chunks = buildChunks(document, pages);
             for (KbChunkEntity chunk : chunks) {
                 kbChunkMapper.insert(chunk);
@@ -135,17 +144,45 @@ public class IngestService {
         }
     }
 
-    private List<PageText> extractPages(File pdf) throws IOException {
+    private List<PageText> extractPdf(Long docId, File pdf, IngestTaskEntity task) throws IOException {
         List<PageText> pages = new ArrayList<PageText>();
         try (PDDocument document = PDDocument.load(pdf)) {
             PDFTextStripper stripper = new PDFTextStripper();
+            PDFRenderer renderer = new PDFRenderer(document);
             int total = document.getNumberOfPages();
+            int processed = 0;
             for (int i = 1; i <= total; i++) {
                 stripper.setStartPage(i);
                 stripper.setEndPage(i);
-                pages.add(new PageText(i, stripper.getText(document)));
+                String text = normalize(stripper.getText(document));
+                Double confidence = null;
+                if (!StringUtils.hasText(text) || text.length() < 20) {
+                    BufferedImage image = renderer.renderImageWithDPI(i - 1, 172);
+                    JavaOcrService.OcrResult ocr = javaOcrService.recognize(image);
+                    text = normalize(ocr.getText());
+                    confidence = ocr.getConfidence();
+                }
+                if (confidence != null && confidence < 0.75) {
+                    saveVisionMark(docId, pdf.getName(), i, text, confidence);
+                }
+                pages.add(new PageText(i, text));
+                processed++;
+                int progress = Math.min(70, 5 + (processed * 65 / Math.max(1, total)));
+                updateTask(task, "RUNNING", progress, null);
             }
         }
+        return pages;
+    }
+
+    private List<PageText> extractImage(Long docId, File imageFile) throws IOException {
+        List<PageText> pages = new ArrayList<PageText>();
+        BufferedImage image = ImageIO.read(imageFile);
+        JavaOcrService.OcrResult ocr = javaOcrService.recognize(image);
+        String text = normalize(ocr.getText());
+        if (ocr.getConfidence() != null && ocr.getConfidence() < 0.75) {
+            saveVisionMark(docId, imageFile.getName(), 1, text, ocr.getConfidence());
+        }
+        pages.add(new PageText(1, text));
         return pages;
     }
 
@@ -185,6 +222,40 @@ public class IngestService {
         }
         String trimmed = text.trim();
         return trimmed.length() <= max ? trimmed : trimmed.substring(0, max);
+    }
+
+    private String resolveFileType(String name) {
+        if (name.endsWith(".pdf")) {
+            return FileType.pdf.name();
+        }
+        return FileType.image.name();
+    }
+
+    private String normalize(String text) {
+        return text == null ? "" : text.replace("\r", "").trim();
+    }
+
+    private void saveVisionMark(Long docId, String fileName, int pageNo, String text, double confidence) {
+        KbPageVisionEntity v = kbPageVisionMapper.selectOne(new LambdaQueryWrapper<KbPageVisionEntity>()
+                .eq(KbPageVisionEntity::getDocId, docId)
+                .eq(KbPageVisionEntity::getPageNo, pageNo)
+                .last("limit 1"));
+        if (v == null) {
+            v = new KbPageVisionEntity();
+            v.setDocId(docId);
+            v.setPageNo(pageNo);
+            v.setNeedVision(1);
+            v.setVisionStatus("DONE");
+            v.setVisionText(truncate(text, 2000));
+            v.setVisionSummary("low_confidence=" + confidence + ", file=" + fileName);
+            kbPageVisionMapper.insert(v);
+        } else {
+            v.setNeedVision(1);
+            v.setVisionStatus("DONE");
+            v.setVisionText(truncate(text, 2000));
+            v.setVisionSummary("low_confidence=" + confidence + ", file=" + fileName);
+            kbPageVisionMapper.updateById(v);
+        }
     }
 
     @lombok.Data
