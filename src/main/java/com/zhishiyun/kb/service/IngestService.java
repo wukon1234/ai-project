@@ -1,0 +1,380 @@
+package com.zhishiyun.kb.service;
+
+
+import com.zhishiyun.kb.client.VisionClient;
+import com.zhishiyun.kb.client.OcrClient;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zhishiyun.kb.common.BizException;
+import com.zhishiyun.kb.common.ErrorCode;
+import com.zhishiyun.kb.common.enums.DocStatus;
+import com.zhishiyun.kb.common.enums.FileType;
+import com.zhishiyun.kb.dto.IngestTaskResponse;
+import com.zhishiyun.kb.dto.IngestUploadResponse;
+import com.zhishiyun.kb.entity.IngestTaskEntity;
+import com.zhishiyun.kb.entity.KbChunkEntity;
+import com.zhishiyun.kb.entity.KbDocumentEntity;
+import com.zhishiyun.kb.entity.KbLibraryEntity;
+import com.zhishiyun.kb.entity.KbPageVisionEntity;
+import com.zhishiyun.kb.mapper.IngestTaskMapper;
+import com.zhishiyun.kb.mapper.KbChunkMapper;
+import com.zhishiyun.kb.mapper.KbDocumentMapper;
+import com.zhishiyun.kb.mapper.KbLibraryMapper;
+import com.zhishiyun.kb.mapper.KbPageVisionMapper;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.springframework.util.StringUtils;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+import javax.imageio.ImageIO;
+
+/** 知识入库：上传落盘 → 异步解析（PDF/OCR/Vision）→ 分块入库。 */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class IngestService {
+
+    private final KbLibraryMapper kbLibraryMapper;
+    private final KbDocumentMapper kbDocumentMapper;
+    private final KbChunkMapper kbChunkMapper;
+    private final IngestTaskMapper ingestTaskMapper;
+    private final LocalStorageService localStorageService;
+    private final ChunkerService chunkerService;
+    private final StringRedisTemplate redisTemplate;
+    private final OcrClient ocrClient;
+    private final KbPageVisionMapper kbPageVisionMapper;
+    private final VisionClient visionClient;
+
+    /** 上传 PDF/图片：落盘建档，创建 PENDING 任务并异步解析。 */
+    @Transactional
+    public IngestUploadResponse upload(MultipartFile file, String libraryCode, String title, String category) {
+        if (file == null || file.isEmpty()) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "文件不能为空");
+        }
+        String name = String.valueOf(file.getOriginalFilename()).toLowerCase();
+        if (!(name.endsWith(".pdf") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg"))) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "仅支持 PDF/图片");
+        }
+        KbLibraryEntity library = kbLibraryMapper.selectOne(new LambdaQueryWrapper<KbLibraryEntity>()
+                .eq(KbLibraryEntity::getCode, libraryCode)
+                .last("limit 1"));
+        if (library == null) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "libraryCode 无效");
+        }
+
+        String storageKey = localStorageService.save(file);
+        KbDocumentEntity document = new KbDocumentEntity();
+        document.setLibraryId(library.getId());
+        document.setLibraryCode(library.getCode());
+        document.setTitle((title == null || title.trim().isEmpty()) ? file.getOriginalFilename() : title);
+        document.setFileType(resolveFileType(name));
+        document.setCategory(category);
+        document.setStorageKey(storageKey);
+        document.setStatus(DocStatus.PARSING.name());
+        document.setPages(0);
+        document.setViewCount(0);
+        kbDocumentMapper.insert(document);
+
+        IngestTaskEntity task = new IngestTaskEntity();
+        task.setDocId(document.getId());
+        task.setStatus("PENDING");
+        task.setProgress(0);
+        ingestTaskMapper.insert(task);
+        parseAsync(task.getId(), document.getId());
+        return new IngestUploadResponse(document.getId(), task.getId());
+    }
+
+    /** 查询入库任务进度。 */
+    public IngestTaskResponse task(Long taskId) {
+        IngestTaskEntity task = ingestTaskMapper.selectById(taskId);
+        if (task == null) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "task 不存在");
+        }
+        return new IngestTaskResponse(task.getStatus(), task.getProgress(), task.getErrorMsg());
+    }
+
+    /** 清空旧分块并重新解析索引。 */
+    @Transactional
+    public IngestUploadResponse reindex(Long docId) {
+        KbDocumentEntity document = kbDocumentMapper.selectById(docId);
+        if (document == null) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "doc 不存在");
+        }
+        kbChunkMapper.delete(new LambdaQueryWrapper<KbChunkEntity>().eq(KbChunkEntity::getDocId, docId));
+        document.setStatus(DocStatus.PARSING.name());
+        kbDocumentMapper.updateById(document);
+        IngestTaskEntity task = new IngestTaskEntity();
+        task.setDocId(docId);
+        task.setStatus("PENDING");
+        task.setProgress(0);
+        ingestTaskMapper.insert(task);
+        parseAsync(task.getId(), docId);
+        return new IngestUploadResponse(docId, task.getId());
+    }
+
+    /** 异步解析：抽文本/OCR/Vision → 分块入库 → READY/FAILED。 */
+    @Async("ingestExecutor")
+    @Transactional
+    public void parseAsync(Long taskId, Long docId) {
+        IngestTaskEntity task = ingestTaskMapper.selectById(taskId);
+        KbDocumentEntity document = kbDocumentMapper.selectById(docId);
+        try {
+            updateTask(task, "RUNNING", 5, null);
+            File file = localStorageService.getFile(document.getStorageKey());
+            List<PageText> pages = "image".equals(document.getFileType()) ? extractImage(document.getId(), file) : extractPdf(document.getId(), file, task);
+            updateTask(task, "RUNNING", 75, null);
+            List<KbChunkEntity> chunks = buildChunks(document, pages);
+            for (KbChunkEntity chunk : chunks) {
+                kbChunkMapper.insert(chunk);
+                chunk.setMilvusPk(String.valueOf(chunk.getId()));
+                kbChunkMapper.updateById(chunk);
+            }
+            document.setPages(pages.size());
+            document.setSummary(pages.isEmpty() ? "" : truncate(pages.get(0).getText(), 200));
+            document.setStatus(DocStatus.READY.name());
+            kbDocumentMapper.updateById(document);
+            try {
+                redisTemplate.delete("doc:meta:" + docId);
+            } catch (Exception ignored) {
+            }
+            updateTask(task, "SUCCESS", 100, null);
+        } catch (Exception e) {
+            log.error("parse failed, doc={}", docId, e);
+            document.setStatus(DocStatus.FAILED.name());
+            kbDocumentMapper.updateById(document);
+            updateTask(task, "FAILED", task.getProgress(), e.getMessage());
+        }
+    }
+
+    /**
+     * 逐页提取：优先 PDFBox 文本；空白/过短页走 OCR；低置信度可调用 Vision。
+     */
+    private List<PageText> extractPdf(Long docId, File pdf, IngestTaskEntity task) throws IOException {
+        List<PageText> pages = new ArrayList<PageText>();
+        int visionUsed = 0;
+        try (PDDocument document = PDDocument.load(pdf)) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            PDFRenderer renderer = new PDFRenderer(document);
+            int total = document.getNumberOfPages();
+            int processed = 0;
+            for (int i = 1; i <= total; i++) {
+                stripper.setStartPage(i);
+                stripper.setEndPage(i);
+                String text = normalize(stripper.getText(document));
+                Double confidence = null;
+                BufferedImage image = null;
+                // 扫描件/空白页：渲染后 OCR
+                if (!StringUtils.hasText(text) || text.length() < 20) {
+                    image = renderer.renderImageWithDPI(i - 1, 172);
+                    try {
+                        OcrClient.OcrResult ocr = ocrClient.recognizeImage(image);
+                        text = normalize(ocr.getText());
+                        confidence = ocr.getConfidence();
+                    } catch (IOException ocrEx) {
+                        if (ocrClient.skipOnPageFail()) {
+                            log.warn("ocr skip page {} of doc {}: {}", i, docId, ocrEx.getMessage());
+                            text = "";
+                            confidence = 0D;
+                        } else {
+                            throw new IOException("第 " + i + " 页 OCR 失败: " + ocrEx.getMessage(), ocrEx);
+                        }
+                    }
+                }
+                // 低置信度页标记 NEED_VISION，并按配额调用 Vision
+                if (confidence != null && confidence < 0.75) {
+                    markNeedVision(docId, i);
+                    if (visionClient.isEnabled() && visionUsed < visionClient.getMaxPagesPerDoc()) {
+                        if (image == null) {
+                            image = renderer.renderImageWithDPI(i - 1, 172);
+                        }
+                        VisionClient.VisionResult vr = visionClient.describe(image, text, i);
+                        if (vr != null && StringUtils.hasText(vr.getText())) {
+                            saveVisionResult(docId, i, vr, "DONE");
+                            // Vision 文本优先参与分块
+                            text = normalize(vr.getText());
+                            visionUsed++;
+                        } else {
+                            saveVisionResult(docId, i, null, "FAILED");
+                        }
+                    } else {
+                        saveVisionMarkPending(docId, pdf.getName(), i, text, confidence);
+                    }
+                }
+                pages.add(new PageText(i, text));
+                processed++;
+                int progress = Math.min(70, 5 + (processed * 65 / Math.max(1, total)));
+                updateTask(task, "RUNNING", progress, null);
+            }
+        }
+        return pages;
+    }
+
+    private List<PageText> extractImage(Long docId, File imageFile) throws IOException {
+        List<PageText> pages = new ArrayList<PageText>();
+        BufferedImage image = ImageIO.read(imageFile);
+        OcrClient.OcrResult ocr;
+        try {
+            ocr = ocrClient.recognizeImage(image);
+        } catch (IOException ocrEx) {
+            if (ocrClient.skipOnPageFail()) {
+                log.warn("ocr skip image doc {}: {}", docId, ocrEx.getMessage());
+                pages.add(new PageText(1, ""));
+                return pages;
+            }
+            throw new IOException("图片 OCR 失败: " + ocrEx.getMessage(), ocrEx);
+        }
+        String text = normalize(ocr.getText());
+        if (ocr.getConfidence() != null && ocr.getConfidence() < 0.75) {
+            markNeedVision(docId, 1);
+            if (visionClient.isEnabled() && visionClient.getMaxPagesPerDoc() > 0) {
+                VisionClient.VisionResult vr = visionClient.describe(image, text, 1);
+                if (vr != null && StringUtils.hasText(vr.getText())) {
+                    saveVisionResult(docId, 1, vr, "DONE");
+                    text = normalize(vr.getText());
+                } else {
+                    saveVisionResult(docId, 1, null, "FAILED");
+                }
+            } else {
+                saveVisionMarkPending(docId, imageFile.getName(), 1, text, ocr.getConfidence());
+            }
+        }
+        pages.add(new PageText(1, text));
+        return pages;
+    }
+
+    /** 按页分块（默认 500 字、overlap 100）。 */
+    private List<KbChunkEntity> buildChunks(KbDocumentEntity document, List<PageText> pages) {
+        List<KbChunkEntity> result = new ArrayList<KbChunkEntity>();
+        int idx = 0;
+        for (PageText page : pages) {
+            List<String> chunks = chunkerService.split(page.getText(), 500, 100);
+            for (String content : chunks) {
+                if (content.isEmpty()) {
+                    continue;
+                }
+                KbChunkEntity entity = new KbChunkEntity();
+                entity.setDocId(document.getId());
+                entity.setLibraryId(document.getLibraryId());
+                entity.setLibraryCode(document.getLibraryCode());
+                entity.setPageNo(page.getPageNo());
+                entity.setChunkIndex(idx++);
+                entity.setContent(content);
+                entity.setTokenEst(Math.max(1, content.length() / 2));
+                result.add(entity);
+            }
+        }
+        return result;
+    }
+
+    private void updateTask(IngestTaskEntity task, String status, Integer progress, String err) {
+        task.setStatus(status);
+        task.setProgress(progress);
+        task.setErrorMsg(err);
+        ingestTaskMapper.updateById(task);
+    }
+
+    private String truncate(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        String trimmed = text.trim();
+        return trimmed.length() <= max ? trimmed : trimmed.substring(0, max);
+    }
+
+    private String resolveFileType(String name) {
+        if (name.endsWith(".pdf")) {
+            return FileType.pdf.name();
+        }
+        return FileType.image.name();
+    }
+
+    private String normalize(String text) {
+        return text == null ? "" : text.replace("\r", "").trim();
+    }
+
+    private void markNeedVision(Long docId, int pageNo) {
+        KbPageVisionEntity v = findVision(docId, pageNo);
+        if (v == null) {
+            v = new KbPageVisionEntity();
+            v.setDocId(docId);
+            v.setPageNo(pageNo);
+            v.setNeedVision(1);
+            v.setVisionStatus("PENDING");
+            kbPageVisionMapper.insert(v);
+        } else {
+            v.setNeedVision(1);
+            if (!"DONE".equals(v.getVisionStatus())) {
+                v.setVisionStatus("PENDING");
+            }
+            kbPageVisionMapper.updateById(v);
+        }
+    }
+
+    private void saveVisionResult(Long docId, int pageNo, VisionClient.VisionResult vr, String status) {
+        KbPageVisionEntity v = findVision(docId, pageNo);
+        if (v == null) {
+            v = new KbPageVisionEntity();
+            v.setDocId(docId);
+            v.setPageNo(pageNo);
+            v.setNeedVision(1);
+            v.setVisionStatus(status);
+            if (vr != null) {
+                v.setVisionText(truncate(vr.getText(), 8000));
+                v.setVisionSummary(truncate(vr.getSummary(), 500));
+            }
+            kbPageVisionMapper.insert(v);
+        } else {
+            v.setNeedVision(1);
+            v.setVisionStatus(status);
+            if (vr != null) {
+                v.setVisionText(truncate(vr.getText(), 8000));
+                v.setVisionSummary(truncate(vr.getSummary(), 500));
+            }
+            kbPageVisionMapper.updateById(v);
+        }
+    }
+
+    private void saveVisionMarkPending(Long docId, String fileName, int pageNo, String text, double confidence) {
+        KbPageVisionEntity v = findVision(docId, pageNo);
+        if (v == null) {
+            v = new KbPageVisionEntity();
+            v.setDocId(docId);
+            v.setPageNo(pageNo);
+            v.setNeedVision(1);
+            v.setVisionStatus("PENDING");
+            v.setVisionText(truncate(text, 2000));
+            v.setVisionSummary("low_confidence=" + confidence + ", file=" + fileName);
+            kbPageVisionMapper.insert(v);
+        } else {
+            v.setNeedVision(1);
+            v.setVisionStatus("PENDING");
+            v.setVisionText(truncate(text, 2000));
+            v.setVisionSummary("low_confidence=" + confidence + ", file=" + fileName);
+            kbPageVisionMapper.updateById(v);
+        }
+    }
+
+    private KbPageVisionEntity findVision(Long docId, int pageNo) {
+        return kbPageVisionMapper.selectOne(new LambdaQueryWrapper<KbPageVisionEntity>()
+                .eq(KbPageVisionEntity::getDocId, docId)
+                .eq(KbPageVisionEntity::getPageNo, pageNo)
+                .last("limit 1"));
+    }
+
+    @lombok.Data
+    @lombok.AllArgsConstructor
+    private static class PageText {
+        private Integer pageNo;
+        private String text;
+    }
+}

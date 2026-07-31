@@ -1,5 +1,9 @@
 package com.zhishiyun.kb.common;
 
+
+import com.zhishiyun.kb.common.BizException;
+import com.zhishiyun.kb.common.ErrorCode;
+import com.zhishiyun.kb.common.Result;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

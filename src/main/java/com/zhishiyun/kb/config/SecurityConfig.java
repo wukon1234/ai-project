@@ -1,6 +1,7 @@
 package com.zhishiyun.kb.config;
 
-import com.zhishiyun.kb.auth.JwtAuthFilter;
+import com.zhishiyun.kb.filter.AskRateLimitFilter;
+import com.zhishiyun.kb.filter.JwtAuthFilter;
 import com.zhishiyun.kb.common.ErrorCode;
 import com.zhishiyun.kb.common.Result;
 import com.fasterxml.jackson.databind.ObjectMapper;
