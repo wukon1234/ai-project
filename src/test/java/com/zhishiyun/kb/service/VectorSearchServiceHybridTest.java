@@ -1,6 +1,7 @@
 package com.zhishiyun.kb.service;
 
 
+import com.zhishiyun.kb.client.EmbeddingClient;
 import com.zhishiyun.kb.entity.KbChunkEntity;
 import com.zhishiyun.kb.mapper.KbChunkMapper;
 import java.util.Arrays;
@@ -15,7 +16,11 @@ class VectorSearchServiceHybridTest {
     @Test
     void hybridShouldFuseVectorAndKeyword() {
         KbChunkMapper mapper = Mockito.mock(KbChunkMapper.class);
-        VectorSearchService service = new VectorSearchService(mapper);
+        EmbeddingClient embeddingClient = Mockito.mock(EmbeddingClient.class);
+        MilvusChunkService milvusChunkService = Mockito.mock(MilvusChunkService.class);
+        Mockito.when(embeddingClient.embed(Mockito.anyList()))
+                .thenThrow(new RuntimeException("unit-test-skip-milvus"));
+        VectorSearchService service = new VectorSearchService(mapper, embeddingClient, milvusChunkService);
         service.setHybridEnabled(true);
 
         KbChunkEntity a = chunk(1L, "年假规定入职满一年五天");

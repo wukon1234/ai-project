@@ -57,7 +57,9 @@ public class DocumentAiService {
                     PageSummaryResponse resp = objectMapper.readValue(entry.json, PageSummaryResponse.class);
                     resp.setCached(true);
                     return resp;
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    log.warn("page summary cache deserialize failed, key={}: {}", cacheKey, e.getMessage());
+                    SUMMARY_CACHE.remove(cacheKey);
                 }
             }
         }

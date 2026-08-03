@@ -36,9 +36,9 @@ public class AdminModelService {
     private String llmEndpoint;
     @Value("${kb.llm.api-key:}")
     private String llmApiKey;
-    @Value("${kb.embedding.model:doubao-embedding-text-240515}")
+    @Value("${kb.embedding.model:embedding-2}")
     private String embeddingModel;
-    @Value("${kb.embedding.endpoint:https://ark.cn-beijing.volces.com/api/v3}")
+    @Value("${kb.embedding.endpoint:https://open.bigmodel.cn/api/paas/v4}")
     private String embeddingEndpoint;
     @Value("${kb.embedding.api-key:}")
     private String embeddingApiKey;
@@ -129,6 +129,66 @@ public class AdminModelService {
     /** 运行时读取（未掩码），供后续 LLM/Embedding 覆盖使用。 */
     public Map<String, Object> runtimeConfig() {
         return loadMerged();
+    }
+
+    /**
+     * 启动时清洗：若库内残留与 yml 明显冲突的旧端点配置，则回写为 yml 默认值。
+     * 覆盖 OpenAI LLM 残留、豆包 Embedding 残留等。
+     */
+    @Transactional
+    public boolean sanitizeStaleOpenAiConfig() {
+        SysConfigEntity cfg = sysConfigMapper.selectOne(new LambdaQueryWrapper<SysConfigEntity>()
+                .eq(SysConfigEntity::getConfigKey, CONFIG_KEY)
+                .last("limit 1"));
+        if (cfg == null || !StringUtils.hasText(cfg.getConfigValue())) {
+            return false;
+        }
+        try {
+            Map<String, Object> stored = objectMapper.readValue(cfg.getConfigValue(),
+                    new TypeReference<Map<String, Object>>() {
+                    });
+            String storedLlmBase = sectionBaseUrl(stored, "llm");
+            String yamlLlmHost = hostOf(llmEndpoint);
+            String storedHost = hostOf(storedLlmBase);
+            boolean staleOpenAi = storedHost != null && storedHost.contains("api.openai.com");
+            boolean yamlNotOpenAi = yamlLlmHost == null || !yamlLlmHost.contains("api.openai.com");
+
+            String storedEmbBase = sectionBaseUrl(stored, "embedding");
+            String storedEmbHost = hostOf(storedEmbBase);
+            String yamlEmbHost = hostOf(embeddingEndpoint);
+            boolean staleDoubaoEmb = storedEmbHost != null && storedEmbHost.contains("volces.com");
+            boolean yamlNotDoubao = yamlEmbHost == null || !yamlEmbHost.contains("volces.com");
+
+            if ((staleOpenAi && yamlNotOpenAi) || (staleDoubaoEmb && yamlNotDoubao)) {
+                Map<String, Object> fresh = defaults();
+                persist(fresh);
+                return true;
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String sectionBaseUrl(Map<String, Object> root, String section) {
+        Object o = root.get(section);
+        if (!(o instanceof Map)) {
+            return null;
+        }
+        Object base = ((Map<String, Object>) o).get("baseUrl");
+        return base == null ? null : String.valueOf(base);
+    }
+
+    private String hostOf(String url) {
+        if (!StringUtils.hasText(url) || "null".equals(url)) {
+            return null;
+        }
+        try {
+            return new URL(url).getHost().toLowerCase();
+        } catch (Exception e) {
+            return url.toLowerCase();
+        }
     }
 
     @SuppressWarnings("unchecked")

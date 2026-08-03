@@ -16,9 +16,8 @@ import com.zhishiyun.kb.mapper.ChatMessageMapper;
 import com.zhishiyun.kb.mapper.ChatSessionMapper;
 import com.zhishiyun.kb.mapper.KbDocumentMapper;
 import com.zhishiyun.kb.mapper.KbLibraryMapper;
-import com.zhishiyun.kb.service.UsageEventService;
+import com.zhishiyun.kb.client.LlmClient;
 import com.zhishiyun.kb.filter.TraceIdFilter;
-import com.zhishiyun.kb.service.VectorSearchService;
 import com.zhishiyun.kb.service.VectorSearchService.SearchHit;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -52,6 +51,7 @@ public class ChatStreamService {
     private final LibraryAccessService libraryAccessService;
     private final VectorSearchService vectorSearchService;
     private final UsageEventService usageEventService;
+    private final LlmClient llmClient;
     private final ObjectMapper objectMapper;
 
     @Value("${kb.rag.score-threshold:0.45}")
@@ -133,7 +133,7 @@ public class ChatStreamService {
                 cite.setExcerpt(excerpt(chunk.getContent()));
                 citations.add(cite);
             }
-            String answer = buildAnswer(selected);
+            String answer = buildAnswer(question, selected);
             for (String part : splitForStreaming(answer)) {
                 send(emitter, "delta", mapOf("content", part));
             }
@@ -157,10 +157,18 @@ public class ChatStreamService {
         } catch (Exception e) {
             log.error("ask stream failed", e);
             try {
-                send(emitter, "error", mapOf("code", 50001, "message", e.getMessage()));
+                int code = 50001;
+                String message = e.getMessage();
+                if (e instanceof com.zhishiyun.kb.common.BizException) {
+                    com.zhishiyun.kb.common.BizException biz = (com.zhishiyun.kb.common.BizException) e;
+                    code = biz.getCode();
+                    message = biz.getMessage();
+                }
+                send(emitter, "error", mapOf("code", code, "message",
+                        message == null || message.trim().isEmpty() ? "系统错误" : message));
             } catch (Exception ignored) {
             }
-            emitter.completeWithError(e);
+            emitter.complete();
         }
     }
 
@@ -189,18 +197,29 @@ public class ChatStreamService {
         emitter.complete();
     }
 
-    /** 基于检索片段拼装回答（后续可替换为 LLM 生成）。 */
-    private String buildAnswer(List<SearchHit> hits) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("根据检索到的资料：\n");
+    /** 基于检索片段调用 LLM 生成可溯源回答。 */
+    private String buildAnswer(String question, List<SearchHit> hits) {
+        StringBuilder context = new StringBuilder();
         int idx = 1;
         for (SearchHit hit : hits) {
-            builder.append("[").append(idx++).append("] ")
-                    .append(excerpt(hit.getChunk().getContent()))
+            context.append("[").append(idx++).append("] ")
+                    .append(contextSnippet(hit.getChunk().getContent()))
                     .append("\n");
         }
-        builder.append("\n以上为基于知识库片段的回答。");
-        return builder.toString();
+        String system = "你是企业知识库助手。请仅依据给定检索片段回答用户问题，"
+                + "必要时用 [n] 标注引用来源。不要编造片段中不存在的事实；"
+                + "若片段不足以回答，请明确说明。";
+        String user = "用户问题：\n" + (question == null ? "" : question)
+                + "\n\n检索片段：\n" + context;
+        return llmClient.chat(system, user);
+    }
+
+    private String contextSnippet(String text) {
+        if (text == null) {
+            return "";
+        }
+        String t = text.trim();
+        return t.length() > 800 ? t.substring(0, 800) : t;
     }
 
     private List<String> splitForStreaming(String text) {

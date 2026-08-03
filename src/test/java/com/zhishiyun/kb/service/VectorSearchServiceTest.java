@@ -1,6 +1,7 @@
 package com.zhishiyun.kb.service;
 
 
+import com.zhishiyun.kb.client.EmbeddingClient;
 import com.zhishiyun.kb.entity.KbChunkEntity;
 import com.zhishiyun.kb.mapper.KbChunkMapper;
 import java.util.Arrays;
@@ -14,7 +15,11 @@ class VectorSearchServiceTest {
     @Test
     void searchInDocShouldOnlyReturnSameDocChunks() {
         KbChunkMapper mapper = Mockito.mock(KbChunkMapper.class);
-        VectorSearchService service = new VectorSearchService(mapper);
+        EmbeddingClient embeddingClient = Mockito.mock(EmbeddingClient.class);
+        MilvusChunkService milvusChunkService = Mockito.mock(MilvusChunkService.class);
+        Mockito.when(embeddingClient.embed(Mockito.anyList()))
+                .thenThrow(new RuntimeException("unit-test-skip-milvus"));
+        VectorSearchService service = new VectorSearchService(mapper, embeddingClient, milvusChunkService);
 
         KbChunkEntity c1 = new KbChunkEntity();
         c1.setId(1L);
@@ -39,7 +44,11 @@ class VectorSearchServiceTest {
     @Test
     void relatedInDocShouldExcludeSeedPage() {
         KbChunkMapper mapper = Mockito.mock(KbChunkMapper.class);
-        VectorSearchService service = new VectorSearchService(mapper);
+        EmbeddingClient embeddingClient = Mockito.mock(EmbeddingClient.class);
+        MilvusChunkService milvusChunkService = Mockito.mock(MilvusChunkService.class);
+        Mockito.when(embeddingClient.embed(Mockito.anyList()))
+                .thenThrow(new RuntimeException("unit-test-skip-milvus"));
+        VectorSearchService service = new VectorSearchService(mapper, embeddingClient, milvusChunkService);
 
         KbChunkEntity p1 = new KbChunkEntity();
         p1.setId(1L);

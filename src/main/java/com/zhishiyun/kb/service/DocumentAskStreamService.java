@@ -2,6 +2,7 @@ package com.zhishiyun.kb.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zhishiyun.kb.client.LlmClient;
 import com.zhishiyun.kb.common.BizException;
 import com.zhishiyun.kb.entity.KbChunkEntity;
 import com.zhishiyun.kb.entity.KbDocumentEntity;
@@ -9,7 +10,6 @@ import com.zhishiyun.kb.entity.KbLibraryEntity;
 import com.zhishiyun.kb.entity.UsageEventEntity;
 import com.zhishiyun.kb.mapper.KbLibraryMapper;
 import com.zhishiyun.kb.mapper.UsageEventMapper;
-import com.zhishiyun.kb.service.VectorSearchService;
 import com.zhishiyun.kb.service.VectorSearchService.SearchHit;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -33,6 +33,7 @@ public class DocumentAskStreamService {
     private final VectorSearchService vectorSearchService;
     private final KbLibraryMapper kbLibraryMapper;
     private final UsageEventMapper usageEventMapper;
+    private final LlmClient llmClient;
     private final ObjectMapper objectMapper;
 
     @Value("${kb.rag.score-threshold:0.45}")
@@ -88,7 +89,7 @@ public class DocumentAskStreamService {
                         "excerpt", excerpt(chunk.getContent())));
             }
 
-            String answer = buildAnswer(selected);
+            String answer = buildAnswer(question, selected);
             for (String part : splitForStreaming(answer)) {
                 send(emitter, "delta", mapOf("content", part));
             }
@@ -132,16 +133,28 @@ public class DocumentAskStreamService {
         usageEventMapper.insert(usage);
     }
 
-    private String buildAnswer(List<SearchHit> hits) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("基于本文档相关片段：\n");
+    /** 基于本文档检索片段调用 LLM 生成回答。 */
+    private String buildAnswer(String question, List<SearchHit> hits) {
+        StringBuilder context = new StringBuilder();
         int idx = 1;
         for (SearchHit hit : hits) {
-            builder.append("[").append(idx++).append("] ")
-                    .append(excerpt(hit.getChunk().getContent()))
+            context.append("[").append(idx++).append("] ")
+                    .append(contextSnippet(hit.getChunk().getContent()))
                     .append("\n");
         }
-        return builder.toString();
+        String system = "你是企业文档助手。请仅依据给定文档片段回答，必要时用 [n] 标注来源；"
+                + "不要编造片段外信息；不足时请明确说明。";
+        String user = "用户问题：\n" + (question == null ? "" : question)
+                + "\n\n文档片段：\n" + context;
+        return llmClient.chat(system, user);
+    }
+
+    private String contextSnippet(String text) {
+        if (text == null) {
+            return "";
+        }
+        String t = text.trim();
+        return t.length() > 800 ? t.substring(0, 800) : t;
     }
 
     private List<String> splitForStreaming(String text) {

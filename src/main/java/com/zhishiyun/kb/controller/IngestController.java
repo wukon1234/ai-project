@@ -11,6 +11,7 @@ import javax.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,7 +36,7 @@ public class IngestController {
     /** 上传文档触发入库。 */
     @PostMapping("/documents")
     public Result<IngestUploadResponse> upload(
-            @RequestHeader("X-Internal-Api-Key") String apiKey,
+            @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey,
             @RequestParam("file") MultipartFile file,
             @RequestParam("libraryCode") @NotBlank String libraryCode,
             @RequestParam(value = "title", required = false) String title,
@@ -47,7 +48,7 @@ public class IngestController {
     /** 查询入库任务状态。 */
     @GetMapping("/tasks/{taskId}")
     public Result<IngestTaskResponse> task(
-            @RequestHeader("X-Internal-Api-Key") String apiKey,
+            @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey,
             @PathVariable Long taskId) {
         validateApiKey(apiKey);
         return Result.ok(ingestService.task(taskId));
@@ -56,15 +57,15 @@ public class IngestController {
     /** 对已有文档重新解析并写入向量库。 */
     @PostMapping("/reindex/{docId}")
     public Result<IngestUploadResponse> reindex(
-            @RequestHeader("X-Internal-Api-Key") String apiKey,
+            @RequestHeader(value = "X-Internal-Api-Key", required = false) String apiKey,
             @PathVariable Long docId) {
         validateApiKey(apiKey);
         return Result.ok(ingestService.reindex(docId));
     }
 
-    /** 校验内部 API Key。 */
+    /** 校验内部 API Key（缺失或错误均返回未授权）。 */
     private void validateApiKey(String apiKey) {
-        if (!internalApiKey.equals(apiKey)) {
+        if (!StringUtils.hasText(apiKey) || !internalApiKey.equals(apiKey)) {
             throw new BizException(ErrorCode.UNAUTHORIZED);
         }
     }

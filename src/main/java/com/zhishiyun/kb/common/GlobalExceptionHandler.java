@@ -11,6 +11,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -46,6 +47,17 @@ public class GlobalExceptionHandler {
         log.warn("Bind failed: {}", message);
         return ResponseEntity.badRequest()
                 .body(Result.fail(ErrorCode.PARAM_INVALID.getCode(), message));
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<Result<Void>> handleMissingRequestHeader(MissingRequestHeaderException ex) {
+        log.warn("Missing request header: {}", ex.getHeaderName());
+        if ("X-Internal-Api-Key".equalsIgnoreCase(ex.getHeaderName())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Result.fail(ErrorCode.UNAUTHORIZED.getCode(), ErrorCode.UNAUTHORIZED.getDefaultMessage()));
+        }
+        return ResponseEntity.badRequest()
+                .body(Result.fail(ErrorCode.PARAM_INVALID.getCode(), "缺少请求头: " + ex.getHeaderName()));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

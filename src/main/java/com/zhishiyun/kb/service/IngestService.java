@@ -1,6 +1,7 @@
 package com.zhishiyun.kb.service;
 
 
+import com.zhishiyun.kb.client.EmbeddingClient;
 import com.zhishiyun.kb.client.VisionClient;
 import com.zhishiyun.kb.client.OcrClient;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -56,6 +57,8 @@ public class IngestService {
     private final OcrClient ocrClient;
     private final KbPageVisionMapper kbPageVisionMapper;
     private final VisionClient visionClient;
+    private final EmbeddingClient embeddingClient;
+    private final MilvusChunkService milvusChunkService;
 
     /** 代理自身，避免同类 @Async 自调用失效。 */
     @Lazy
@@ -117,6 +120,7 @@ public class IngestService {
         if (document == null) {
             throw new BizException(ErrorCode.PARAM_INVALID, "doc 不存在");
         }
+        milvusChunkService.deleteByDocId(docId);
         kbChunkMapper.delete(new LambdaQueryWrapper<KbChunkEntity>().eq(KbChunkEntity::getDocId, docId));
         document.setStatus(DocStatus.PARSING.name());
         kbDocumentMapper.updateById(document);
@@ -161,8 +165,21 @@ public class IngestService {
             List<KbChunkEntity> chunks = buildChunks(document, pages);
             for (KbChunkEntity chunk : chunks) {
                 kbChunkMapper.insert(chunk);
-                chunk.setMilvusPk(String.valueOf(chunk.getId()));
-                kbChunkMapper.updateById(chunk);
+            }
+            if (!chunks.isEmpty()) {
+                updateTask(task, "RUNNING", 85, null);
+                List<String> texts = new ArrayList<String>(chunks.size());
+                for (KbChunkEntity chunk : chunks) {
+                    texts.add(chunk.getContent());
+                }
+                List<float[]> vectors = embeddingClient.embed(texts);
+                updateTask(task, "RUNNING", 92, null);
+                List<String> pks = milvusChunkService.upsertChunks(chunks, vectors);
+                for (int i = 0; i < chunks.size(); i++) {
+                    KbChunkEntity chunk = chunks.get(i);
+                    chunk.setMilvusPk(pks.get(i));
+                    kbChunkMapper.updateById(chunk);
+                }
             }
             document.setPages(pages.size());
             document.setSummary(pages.isEmpty() ? "" : truncate(pages.get(0).getText(), 200));
