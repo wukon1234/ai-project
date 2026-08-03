@@ -3,9 +3,6 @@ spring:
     url: jdbc:mysql://127.0.0.1:3306/zhishiyun?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
     username: root
     password: root
-  redis:
-    host: 127.0.0.1
-    port: 6379
 
 kb:
   jwt:

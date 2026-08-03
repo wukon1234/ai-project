@@ -17,12 +17,6 @@ spring:
       enabled: true
       max-file-size: 50MB
       max-request-size: 100MB
-  redis:
-    host: ${KB_REDIS_HOST:127.0.0.1}
-    port: ${KB_REDIS_PORT:6379}
-    password: ${KB_REDIS_PASSWORD:}
-    database: ${KB_REDIS_DATABASE:0}
-    timeout: 200ms
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
@@ -35,9 +29,6 @@ mybatis-plus:
       id-type: assign_id
 
 management:
-  health:
-    redis:
-      enabled: false
   endpoints:
     web:
       exposure:
@@ -60,14 +51,16 @@ kb:
     host: ${KB_MILVUS_HOST:127.0.0.1}
     port: ${KB_MILVUS_PORT:19530}
     collection: ${KB_MILVUS_COLLECTION:kb_chunks}
-    dimension: ${KB_MILVUS_DIMENSION:1536}
+    # 维度需与 embedding 模型输出一致：doubao-embedding-text-240515 为 2048 维
+    dimension: ${KB_MILVUS_DIMENSION:2048}
   embedding:
-    model: ${KB_EMBEDDING_MODEL:text-embedding-3-small}
-    endpoint: ${KB_EMBEDDING_ENDPOINT:https://api.openai.com/v1}
+    # 豆包文本向量模型（火山方舟 OpenAI 兼容接口）
+    model: ${KB_EMBEDDING_MODEL:doubao-embedding-text-240515}
+    endpoint: ${KB_EMBEDDING_ENDPOINT:https://ark.cn-beijing.volces.com/api/v3}
     api-key: ${KB_EMBEDDING_API_KEY:}
   llm:
-    model: ${KB_LLM_MODEL:gpt-4o-mini}
-    endpoint: ${KB_LLM_ENDPOINT:https://api.openai.com/v1}
+    model: ${KB_LLM_MODEL:deepseek-v4-flash}
+    endpoint: ${KB_LLM_ENDPOINT:https://api.deepseek.com}
     api-key: ${KB_LLM_API_KEY:}
   ocr:
     enabled: ${KB_OCR_ENABLED:true}
@@ -90,9 +83,10 @@ kb:
     context-n: ${KB_RAG_CONTEXT_N:6}
     hybrid-enabled: ${KB_RAG_HYBRID_ENABLED:false}
   vision:
+    # 硅基流动上的 DeepSeek 视觉模型（DeepSeek-OCR，OpenAI 兼容接口）
     enabled: ${KB_VISION_ENABLED:false}
-    model: ${KB_VISION_MODEL:gpt-4o}
-    endpoint: ${KB_VISION_ENDPOINT:https://api.openai.com/v1}
+    model: ${KB_VISION_MODEL:deepseek-ai/DeepSeek-OCR}
+    endpoint: ${KB_VISION_ENDPOINT:https://api.siliconflow.cn/v1}
     api-key: ${KB_VISION_API_KEY:}
     max-pages-per-doc: ${KB_VISION_MAX_PAGES:3}
   stats:
@@ -103,7 +97,7 @@ kb:
     blocked-libraries: ${KB_SHARE_BLOCKED_LIBRARIES:}
     require-login: ${KB_SHARE_REQUIRE_LOGIN:false}
   rate-limit:
-    # 无 Redis 时可先关；有 Redis 再开
+    # 进程内限流（单实例有效），多实例部署需改回外部存储
     enabled: ${KB_RATE_LIMIT_ENABLED:false}
     ask-per-minute: ${KB_RATE_LIMIT_ASK_PER_MINUTE:10}
   sso:

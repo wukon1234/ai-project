@@ -30,12 +30,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,7 +46,10 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class AuthService {
 
-    private static final String PWD_RESET_PREFIX = "pwd:reset:";
+    /** 密码重置 token 有效期：30 分钟 */
+    private static final long PWD_RESET_TTL_MS = 30 * 60 * 1000L;
+    /** 进程内密码重置 token 存储：token -> {userId, expireAt}，仅单实例有效 */
+    private static final Map<String, long[]> PWD_RESET_STORE = new ConcurrentHashMap<String, long[]>();
 
     private final SysUserMapper sysUserMapper;
     private final UserPreferenceMapper userPreferenceMapper;
@@ -57,7 +59,6 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
-    private final StringRedisTemplate redisTemplate;
 
     @Value("${auth.register.auto-approve:true}")
     private boolean autoApprove;
@@ -341,7 +342,7 @@ public class AuthService {
     }
 
     /**
-     * 忘记密码：生成一次性 token 写入 Redis（30 分钟），邮件发送 stub 为日志输出。
+     * 忘记密码：生成一次性 token 存入进程内存（30 分钟过期），邮件发送 stub 为日志输出。
      */
     public Map<String, Object> forgotPassword(ForgotPasswordRequest request) {
         SysUserEntity user = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUserEntity>()
@@ -354,7 +355,7 @@ public class AuthService {
             return data;
         }
         String token = UUID.randomUUID().toString().replace("-", "");
-        redisTemplate.opsForValue().set(PWD_RESET_PREFIX + token, String.valueOf(user.getId()), 30, TimeUnit.MINUTES);
+        PWD_RESET_STORE.put(token, new long[]{user.getId(), System.currentTimeMillis() + PWD_RESET_TTL_MS});
         String resetLink = "/api/v1/auth/password/reset?token=" + token;
         log.info("[password-reset] email={} resetLink={}", request.getEmail(), resetLink);
         data.put("devResetToken", token);
@@ -363,17 +364,21 @@ public class AuthService {
 
     @Transactional
     public void resetPassword(ResetPasswordRequest request) {
-        String userId = redisTemplate.opsForValue().get(PWD_RESET_PREFIX + request.getToken());
-        if (!StringUtils.hasText(userId)) {
+        long[] entry = PWD_RESET_STORE.get(request.getToken());
+        if (entry == null) {
             throw new BizException(ErrorCode.BIZ_ERROR, "重置令牌无效或已过期");
         }
-        SysUserEntity user = sysUserMapper.selectById(Long.valueOf(userId));
+        if (entry[1] < System.currentTimeMillis()) {
+            PWD_RESET_STORE.remove(request.getToken());
+            throw new BizException(ErrorCode.BIZ_ERROR, "重置令牌无效或已过期");
+        }
+        SysUserEntity user = sysUserMapper.selectById(Long.valueOf(entry[0]));
         if (user == null) {
             throw new BizException(ErrorCode.BIZ_ERROR, "用户不存在");
         }
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         sysUserMapper.updateById(user);
-        redisTemplate.delete(PWD_RESET_PREFIX + request.getToken());
+        PWD_RESET_STORE.remove(request.getToken());
         writeAudit(user.getId(), "PASSWORD_RESET");
     }
 }

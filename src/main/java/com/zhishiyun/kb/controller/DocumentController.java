@@ -87,7 +87,7 @@ public class DocumentController {
         return Result.ok(documentService.createShare(user.getUserId(), id));
     }
 
-    /** 指定页 AI 摘要（带 Redis 缓存）。 */
+    /** 指定页 AI 摘要。 */
     @GetMapping("/{id}/pages/{pageNo}/summary")
     public Result<PageSummaryResponse> pageSummary(
             Authentication auth,

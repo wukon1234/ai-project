@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -27,7 +26,6 @@ class AuthSsoServiceTest {
         SysRefreshTokenMapper refreshTokenMapper = Mockito.mock(SysRefreshTokenMapper.class);
         KbAclMapper aclMapper = Mockito.mock(KbAclMapper.class);
         AuditService auditService = Mockito.mock(AuditService.class);
-        StringRedisTemplate redis = Mockito.mock(StringRedisTemplate.class);
         JwtProperties props = new JwtProperties();
         props.setIssuer("test");
         props.setSecret("dev-secret-dev-secret-dev-secret");
@@ -38,7 +36,7 @@ class AuthSsoServiceTest {
 
         AuthService service = new AuthService(
                 userMapper, preferenceMapper, refreshTokenMapper, aclMapper, auditService,
-                new BCryptPasswordEncoder(), jwtService, props, redis);
+                new BCryptPasswordEncoder(), jwtService, props);
         ReflectionTestUtils.setField(service, "ssoMockEnabled", true);
 
         SysUserEntity existing = new SysUserEntity();

@@ -29,7 +29,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -54,7 +53,6 @@ public class IngestService {
     private final IngestTaskMapper ingestTaskMapper;
     private final LocalStorageService localStorageService;
     private final ChunkerService chunkerService;
-    private final StringRedisTemplate redisTemplate;
     private final OcrClient ocrClient;
     private final KbPageVisionMapper kbPageVisionMapper;
     private final VisionClient visionClient;
@@ -170,10 +168,6 @@ public class IngestService {
             document.setSummary(pages.isEmpty() ? "" : truncate(pages.get(0).getText(), 200));
             document.setStatus(DocStatus.READY.name());
             kbDocumentMapper.updateById(document);
-            try {
-                redisTemplate.delete("doc:meta:" + docId);
-            } catch (Exception ignored) {
-            }
             updateTask(task, "SUCCESS", 100, null);
         } catch (Throwable e) {
             log.error("parse failed, doc={}", docId, e);

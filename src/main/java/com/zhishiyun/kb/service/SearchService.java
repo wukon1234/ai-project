@@ -22,7 +22,6 @@ import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -33,13 +32,14 @@ public class SearchService {
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final List<String> HOT_SEEDS = Arrays.asList("报销流程", "年假规定", "产品A规格", "考勤制度");
+    /** 进程内热搜计数：词 -> 次数，仅单实例有效 */
+    private static final Map<String, Long> HOT_COUNTS = new java.util.concurrent.ConcurrentHashMap<String, Long>();
 
     private final KbAclMapper kbAclMapper;
     private final KbDocumentMapper kbDocumentMapper;
     private final KbChunkMapper kbChunkMapper;
     private final KbLibraryMapper kbLibraryMapper;
     private final UsageEventMapper usageEventMapper;
-    private final StringRedisTemplate redisTemplate;
 
     /** 在用户有权知识库内搜索文档，支持分类过滤与排序分页。 */
     public Map<String, Object> search(Long userId, String q, String category, String sort, int page, int size) {
@@ -91,10 +91,7 @@ public class SearchService {
             }
         }
         if (StringUtils.hasText(q)) {
-            try {
-                redisTemplate.opsForZSet().incrementScore("search:hot", q, 1D);
-            } catch (Exception ignored) {
-            }
+            HOT_COUNTS.merge(q, 1L, Long::sum);
             try {
                 UsageEventEntity usage = new UsageEventEntity();
                 usage.setUserId(userId);
@@ -109,20 +106,15 @@ public class SearchService {
         return data;
     }
 
-    /** 热搜词：优先 Redis，否则返回内置种子词。 */
+    /** 热搜词：优先进程内计数，否则返回内置种子词。 */
     public List<String> hotWords() {
-        try {
-            java.util.Set<org.springframework.data.redis.core.ZSetOperations.TypedTuple<String>> tuples =
-                    redisTemplate.opsForZSet().reverseRangeWithScores("search:hot", 0, 9);
-            if (tuples == null || tuples.isEmpty()) {
-                return HOT_SEEDS;
-            }
-            List<String> result = tuples.stream().map(org.springframework.data.redis.core.ZSetOperations.TypedTuple::getValue)
-                    .filter(StringUtils::hasText).collect(Collectors.toList());
-            return result.isEmpty() ? HOT_SEEDS : result;
-        } catch (Exception ex) {
-            return HOT_SEEDS;
-        }
+        List<String> result = HOT_COUNTS.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .limit(10)
+                .map(Map.Entry::getKey)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toList());
+        return result.isEmpty() ? HOT_SEEDS : result;
     }
 
     private Comparator<SearchRow> buildComparator(String sort, String q) {

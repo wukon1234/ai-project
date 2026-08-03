@@ -13,13 +13,13 @@ import com.zhishiyun.kb.mapper.KbChunkMapper;
 import com.zhishiyun.kb.mapper.KbLibraryMapper;
 import com.zhishiyun.kb.service.VectorSearchService;
 import com.zhishiyun.kb.service.VectorSearchService.SearchHit;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -30,29 +30,36 @@ import org.springframework.util.StringUtils;
 public class DocumentAiService {
 
     private static final String SUMMARY_CACHE_PREFIX = "page:summary:";
+    /** 页摘要缓存有效期：24 小时 */
+    private static final long SUMMARY_TTL_MS = 24 * 60 * 60 * 1000L;
+    /** 进程内页摘要缓存：key -> {json, expireAt}，仅单实例有效 */
+    private static final Map<String, CacheEntry> SUMMARY_CACHE = new ConcurrentHashMap<String, CacheEntry>();
 
     private final DocumentService documentService;
     private final KbChunkMapper kbChunkMapper;
     private final KbLibraryMapper kbLibraryMapper;
     private final VectorSearchService vectorSearchService;
-    private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 
-    /** 页摘要：先读 Redis 缓存，未命中则由当页分块拼接生成。 */
+    /** 页摘要：先读进程内缓存，未命中则由当页分块拼接生成。 */
     public PageSummaryResponse pageSummary(Long userId, Long docId, Integer pageNo) {
         if (pageNo == null || pageNo < 1) {
             throw new BizException(ErrorCode.PARAM_INVALID, "pageNo 无效");
         }
         KbDocumentEntity doc = documentService.getPermittedDocument(userId, docId);
         String cacheKey = SUMMARY_CACHE_PREFIX + docId + ":" + pageNo;
-        try {
-            String cached = redisTemplate.opsForValue().get(cacheKey);
-            if (StringUtils.hasText(cached)) {
-                PageSummaryResponse resp = objectMapper.readValue(cached, PageSummaryResponse.class);
-                resp.setCached(true);
-                return resp;
+        CacheEntry entry = SUMMARY_CACHE.get(cacheKey);
+        if (entry != null) {
+            if (entry.expireAt < System.currentTimeMillis()) {
+                SUMMARY_CACHE.remove(cacheKey);
+            } else {
+                try {
+                    PageSummaryResponse resp = objectMapper.readValue(entry.json, PageSummaryResponse.class);
+                    resp.setCached(true);
+                    return resp;
+                } catch (Exception ignored) {
+                }
             }
-        } catch (Exception ignored) {
         }
 
         KbLibraryEntity library = kbLibraryMapper.selectById(doc.getLibraryId());
@@ -72,7 +79,8 @@ public class DocumentAiService {
                 .cached(false)
                 .build();
         try {
-            redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(response), Duration.ofHours(24));
+            SUMMARY_CACHE.put(cacheKey, new CacheEntry(
+                    objectMapper.writeValueAsString(response), System.currentTimeMillis() + SUMMARY_TTL_MS));
         } catch (Exception ignored) {
         }
         return response;
@@ -151,5 +159,16 @@ public class DocumentAiService {
                 .excerpt(excerpt)
                 .chunkId(chunk.getId())
                 .build();
+    }
+
+    /** 进程内缓存条目：JSON 内容 + 过期时间戳。 */
+    private static class CacheEntry {
+        private final String json;
+        private final long expireAt;
+
+        CacheEntry(String json, long expireAt) {
+            this.json = json;
+            this.expireAt = expireAt;
+        }
     }
 }

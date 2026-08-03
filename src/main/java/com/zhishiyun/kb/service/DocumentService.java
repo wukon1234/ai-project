@@ -21,7 +21,6 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -33,10 +32,8 @@ import org.springframework.util.StringUtils;
 public class DocumentService {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final String CACHE_PREFIX = "doc:meta:";
-    private static final String DOC_SHARE_PREFIX = "share:doc:";
-    /** Redis 不可用时的进程内分享 token 兜底 */
-    private static final Map<String, String> LOCAL_SHARE_STORE = new java.util.concurrent.ConcurrentHashMap<String, String>();
+    /** 进程内分享 token 存储（单实例有效） */
+    private static final Map<String, ShareEntry> LOCAL_SHARE_STORE = new java.util.concurrent.ConcurrentHashMap<String, ShareEntry>();
 
     private final KbDocumentMapper kbDocumentMapper;
     private final KbLibraryMapper kbLibraryMapper;
@@ -45,7 +42,6 @@ public class DocumentService {
     private final UsageEventMapper usageEventMapper;
     private final AuditService auditService;
     private final LocalStorageService localStorageService;
-    private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 
     /** 文档分享链接过期小时数 */
@@ -57,21 +53,9 @@ public class DocumentService {
     @Value("${kb.share.base-url:http://localhost:5173}")
     private String shareBaseUrl;
 
-    /** 文档元数据；带 Redis 短缓存，并记录浏览。 */
+    /** 文档元数据，并记录浏览。 */
     public DocumentMetaResponse meta(Long userId, Long docId) {
         KbDocumentEntity doc = getPermittedDocument(userId, docId);
-        String key = CACHE_PREFIX + docId;
-        try {
-            String cached = redisTemplate.opsForValue().get(key);
-            if (cached != null && !cached.isEmpty()) {
-                DocumentMetaResponse resp = objectMapper.readValue(cached, DocumentMetaResponse.class);
-                resp.setFavorited(isFavorited(userId, docId));
-                log.debug("doc meta cache hit, userId={}, docId={}", userId, docId);
-                return resp;
-            }
-        } catch (Exception ex) {
-            log.warn("doc meta cache read failed, docId={}: {}", docId, ex.getMessage());
-        }
         KbLibraryEntity library = kbLibraryMapper.selectById(doc.getLibraryId());
         DocumentMetaResponse response = DocumentMetaResponse.builder()
                 .id(doc.getId())
@@ -86,11 +70,6 @@ public class DocumentService {
                 .favorited(isFavorited(userId, docId))
                 .category(doc.getCategory())
                 .build();
-        try {
-            redisTemplate.opsForValue().set(key, objectMapper.writeValueAsString(response), java.time.Duration.ofMinutes(30));
-        } catch (Exception ex) {
-            log.warn("doc meta cache write failed, docId={}: {}", docId, ex.getMessage());
-        }
         return response;
     }
 
@@ -126,10 +105,6 @@ public class DocumentService {
         int next = (doc.getViewCount() == null ? 0 : doc.getViewCount()) + 1;
         doc.setViewCount(next);
         kbDocumentMapper.updateById(doc);
-        try {
-            redisTemplate.delete(CACHE_PREFIX + docId);
-        } catch (Exception ignored) {
-        }
         String type = "READ_COMPLETE".equalsIgnoreCase(eventType) ? "READ_COMPLETE" : "OPEN_SOURCE";
         StringBuilder extra = new StringBuilder("{");
         if (pageNo != null) {
@@ -165,12 +140,7 @@ public class DocumentService {
         }
         String token = UUID.randomUUID().toString().replace("-", "");
         String payload = "{\"docId\":" + docId + ",\"userId\":" + userId + "}";
-        try {
-            redisTemplate.opsForValue().set(DOC_SHARE_PREFIX + token, payload, java.time.Duration.ofHours(shareExpireHours));
-        } catch (Exception ex) {
-            log.warn("doc share redis unavailable, fallback to local store, docId={}: {}", docId, ex.getMessage());
-            LOCAL_SHARE_STORE.put(token, payload);
-        }
+        LOCAL_SHARE_STORE.put(token, new ShareEntry(payload, System.currentTimeMillis() + shareExpireHours * 3600_000L));
         writeAudit(userId, "SHARE_DOC", "document", String.valueOf(docId), "分享文档：" + doc.getTitle());
         Map<String, Object> data = new HashMap<String, Object>();
         data.put("shareToken", token);
@@ -186,19 +156,17 @@ public class DocumentService {
 
     /** 只读解析文档分享 token。 */
     public Long resolveSharedDocId(String token) {
-        String payload = null;
-        try {
-            payload = redisTemplate.opsForValue().get(DOC_SHARE_PREFIX + token);
-        } catch (Exception ex) {
-            log.warn("resolve doc share redis failed: {}", ex.getMessage());
-        }
-        if (payload == null || payload.isEmpty()) {
-            payload = LOCAL_SHARE_STORE.get(token);
-        }
-        if (payload == null || payload.isEmpty()) {
+        ShareEntry entry = LOCAL_SHARE_STORE.get(token);
+        if (entry == null) {
             log.warn("doc share token invalid or expired");
             throw new BizException(ErrorCode.PARAM_INVALID, "分享链接无效或已过期");
         }
+        if (entry.expireAt < System.currentTimeMillis()) {
+            LOCAL_SHARE_STORE.remove(token);
+            log.warn("doc share token invalid or expired");
+            throw new BizException(ErrorCode.PARAM_INVALID, "分享链接无效或已过期");
+        }
+        String payload = entry.payload;
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> map = objectMapper.readValue(payload, Map.class);
@@ -233,5 +201,16 @@ public class DocumentService {
 
     private void writeAudit(Long userId, String action, String targetType, String targetId, String detail) {
         auditService.write(userId, action, targetType, targetId, detail);
+    }
+
+    /** 进程内分享条目：payload + 过期时间戳。 */
+    private static class ShareEntry {
+        private final String payload;
+        private final long expireAt;
+
+        ShareEntry(String payload, long expireAt) {
+            this.payload = payload;
+            this.expireAt = expireAt;
+        }
     }
 }

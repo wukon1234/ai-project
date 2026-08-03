@@ -30,19 +30,19 @@ public class AdminModelService {
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
 
-    @Value("${kb.llm.model:gpt-4o-mini}")
+    @Value("${kb.llm.model:deepseek-v4-flash}")
     private String llmModel;
-    @Value("${kb.llm.endpoint:https://api.openai.com/v1}")
+    @Value("${kb.llm.endpoint:https://api.deepseek.com}")
     private String llmEndpoint;
     @Value("${kb.llm.api-key:}")
     private String llmApiKey;
-    @Value("${kb.embedding.model:text-embedding-3-small}")
+    @Value("${kb.embedding.model:doubao-embedding-text-240515}")
     private String embeddingModel;
-    @Value("${kb.embedding.endpoint:https://api.openai.com/v1}")
+    @Value("${kb.embedding.endpoint:https://ark.cn-beijing.volces.com/api/v3}")
     private String embeddingEndpoint;
     @Value("${kb.embedding.api-key:}")
     private String embeddingApiKey;
-    @Value("${kb.milvus.dimension:1536}")
+    @Value("${kb.milvus.dimension:2048}")
     private int embeddingDimension;
     @Value("${kb.ocr.enabled:true}")
     private boolean ocrEnabled;
@@ -50,8 +50,12 @@ public class AdminModelService {
     private String ocrBaseUrl;
     @Value("${kb.vision.enabled:false}")
     private boolean visionEnabled;
-    @Value("${kb.vision.model:gpt-4o}")
+    @Value("${kb.vision.model:deepseek-ai/DeepSeek-OCR}")
     private String visionModel;
+    @Value("${kb.vision.endpoint:https://api.siliconflow.cn/v1}")
+    private String visionEndpoint;
+    @Value("${kb.vision.api-key:${kb.llm.api-key:}}")
+    private String visionApiKey;
     @Value("${kb.rag.context-n:6}")
     private int ragTopK;
     @Value("${kb.rag.score-threshold:0.15}")
@@ -249,8 +253,8 @@ public class AdminModelService {
         Map<String, Object> vision = new LinkedHashMap<String, Object>();
         vision.put("enabled", visionEnabled);
         vision.put("modelName", visionModel);
-        vision.put("baseUrl", llmEndpoint);
-        vision.put("apiKey", llmApiKey);
+        vision.put("baseUrl", visionEndpoint);
+        vision.put("apiKey", visionApiKey);
         root.put("vision", vision);
 
         Map<String, Object> rag = new LinkedHashMap<String, Object>();
