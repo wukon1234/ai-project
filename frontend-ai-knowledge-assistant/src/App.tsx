@@ -236,7 +236,10 @@ function App() {
     return (
       <HelpPage
         onBack={() => setView('profile')}
-        onAsk={() => setView('chat')}
+        onAsk={(prompt) => {
+          if (prompt) setChatSeed(prompt)
+          setView('chat')
+        }}
         onOpenSearch={() => setView('search')}
       />
     )

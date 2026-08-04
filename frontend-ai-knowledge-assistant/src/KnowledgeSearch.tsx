@@ -125,6 +125,7 @@ function KnowledgeSearch({ onAsk, onRead, onAskAboutDoc }: KnowledgeSearchProps)
   const [hotSearches, setHotSearches] = useState<string[]>(HOT_FALLBACK)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -148,7 +149,7 @@ function KnowledgeSearch({ onAsk, onRead, onAskAboutDoc }: KnowledgeSearchProps)
       setError(null)
       try {
         const data = await searchKnowledge({
-          q: committedQuery,
+          q: committedQuery || undefined,
           category: filter,
           sort: sortApiMap[sort],
           page: 1,
@@ -158,12 +159,13 @@ function KnowledgeSearch({ onAsk, onRead, onAskAboutDoc }: KnowledgeSearchProps)
         const list = (data?.list || []).map(mapResult)
         setResults(list)
         setTotal(data?.total ?? list.length)
-      } catch {
+        setError(null)
+      } catch (err) {
         if (!alive) return
         setResults([])
         setTotal(0)
-        // 技术异常（含 SQL/堆栈）一律走空态，不把报错日志展示给用户
-        setError(null)
+        const msg = err instanceof Error ? err.message : '搜索失败'
+        setError(msg === '系统错误' ? '搜索暂时不可用，请稍后重试' : msg)
       } finally {
         if (alive) setLoading(false)
       }
@@ -172,7 +174,7 @@ function KnowledgeSearch({ onAsk, onRead, onAskAboutDoc }: KnowledgeSearchProps)
       alive = false
       window.clearTimeout(timer)
     }
-  }, [committedQuery, filter, sort])
+  }, [committedQuery, filter, sort, reloadToken])
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -299,11 +301,34 @@ function KnowledgeSearch({ onAsk, onRead, onAskAboutDoc }: KnowledgeSearchProps)
             </div>
           ) : null}
 
+          {!loading && error ? (
+            <div className="ksEmpty">
+              <div className="ksEmptyOrb" aria-hidden="true" />
+              <h3>搜索失败</h3>
+              <p>{error}</p>
+              <button
+                type="button"
+                className="ksEmptyBtn"
+                onClick={() => setReloadToken((n) => n + 1)}
+              >
+                重试
+              </button>
+            </div>
+          ) : null}
+
           {!loading && !error && results.length === 0 ? (
             <div className="ksEmpty">
               <div className="ksEmptyOrb" aria-hidden="true" />
-              <h3>未找到相关内容，试试 AI 问答？</h3>
-              <p>问答会在你有权限的知识库中检索，并附上来源可追溯。</p>
+              <h3>
+                {committedQuery
+                  ? '未找到相关内容，试试 AI 问答？'
+                  : '当前范围内暂无已入库文档'}
+              </h3>
+              <p>
+                {committedQuery
+                  ? '问答会在你有权限的知识库中检索，并附上来源可追溯。'
+                  : '请确认账号已开通知识库权限，或到管理后台上传并完成入库后再试。'}
+              </p>
               <button type="button" className="ksEmptyBtn" onClick={() => onAsk(query || committedQuery)}>
                 <Sparkles size={16} />
                 去 AI 问答

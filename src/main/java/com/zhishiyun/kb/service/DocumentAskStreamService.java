@@ -110,6 +110,7 @@ public class DocumentAskStreamService {
                     "content", "结合本文档片段核对关键事实，整理要点并标注引用。\n"));
 
             boolean[] generating = {false};
+            AnswerFollowupSplitter splitter = new AnswerFollowupSplitter();
             streamAnswer(question, selected, (type, content) -> {
                 if ("thinking".equals(type)) {
                     send(emitter, "thinking", mapOf("content", content));
@@ -122,13 +123,19 @@ public class DocumentAskStreamService {
                             "phase", "answer",
                             "message", "正在生成回答…"));
                 }
-                send(emitter, "delta", mapOf("content", content));
+                splitter.onChunk(content, part -> send(emitter, "delta", mapOf("content", part)));
             });
+            splitter.finish(part -> send(emitter, "delta", mapOf("content", part)));
 
-            send(emitter, "done", mapOf(
+            java.util.Map<String, Object> done = mapOf(
                     "elapsedMs", System.currentTimeMillis() - start,
                     "status", "OK",
-                    "disclaimer", "AI 可能出错，请以原文为准"));
+                    "disclaimer", "AI 可能出错，请以原文为准");
+            java.util.List<String> followUps = splitter.followUps(3);
+            if (!followUps.isEmpty()) {
+                done.put("followUps", followUps);
+            }
+            send(emitter, "done", done);
             writeUsage(userId, doc, question);
             emitter.complete();
         } catch (Exception e) {
@@ -175,7 +182,12 @@ public class DocumentAskStreamService {
         }
         String system = "你是企业文档助手。请仅依据给定文档片段回答。"
                 + "输出要求：使用清晰层级与要点列表；必要时用 [n] 标注来源；"
-                + "不要编造片段外信息；不足时请明确说明。";
+                + "不要编造片段外信息；不足时请明确说明。"
+                + "正文回答结束后，必须另起一行严格按下列格式输出 3 条推荐追问（不要多写说明文字）：\n"
+                + AnswerFollowupSplitter.START + "\n"
+                + "追问1\n追问2\n追问3\n"
+                + AnswerFollowupSplitter.END + "\n"
+                + "推荐追问必须紧扣用户当前问题与你刚给出的回答；禁止随机或与原问题重复。";
         String user = "用户问题：\n" + (question == null ? "" : question)
                 + "\n\n文档片段：\n" + context;
         llmClient.chatStream(system, user, sink);

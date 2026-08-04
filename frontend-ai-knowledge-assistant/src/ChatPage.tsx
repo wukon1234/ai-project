@@ -35,6 +35,7 @@ import {
   getPreferences,
   getSession,
   listSessions,
+  me,
   patchSessionScope,
   regenerateStream,
   saveFavoriteAnswer,
@@ -100,6 +101,8 @@ function ChatPage({
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [ratingOpen, setRatingOpen] = useState(false)
   const [feedbackBusy, setFeedbackBusy] = useState(false)
+  const [userName, setUserName] = useState('加载中…')
+  const [userSub, setUserSub] = useState('设置')
   const scopeRef = useRef<HTMLDivElement | null>(null)
   const booted = useRef(false)
   const sessionsReady = useRef(false)
@@ -129,6 +132,27 @@ function ChatPage({
     )
     lines.push('结合上述片段核对关键事实，按类别整理要点，并在句末标注引用编号。')
     return lines.join('\n')
+  }
+
+  function parseFollowUps(raw: unknown): string[] {
+    if (Array.isArray(raw)) {
+      return raw.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 3)
+    }
+    if (typeof raw === 'string' && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw) as unknown
+        if (Array.isArray(parsed)) {
+          return parsed.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 3)
+        }
+      } catch {
+        return raw
+          .split(/\n/)
+          .map((x) => x.trim())
+          .filter(Boolean)
+          .slice(0, 3)
+      }
+    }
+    return []
   }
 
   function friendlyError(err: unknown, fallback: string) {
@@ -183,6 +207,7 @@ function ChatPage({
         messageId: lastAi.id,
         elapsedMs: lastAi.elapsedMs || 0,
         status: lastAi.answerStatus || 'OK',
+        followUps: parseFollowUps(lastAi.followUps),
       })
     } else {
       setAnswerText('')
@@ -213,6 +238,29 @@ function ChatPage({
     }
     return list
   }
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const auth = await me()
+        if (!alive) return
+        const u = auth.user
+        setUserName(u?.name || '用户')
+        const sub = [u?.deptName, u?.empNo ? `工号 ${u.empNo}` : '']
+          .filter(Boolean)
+          .join(' · ')
+        setUserSub(sub || '设置')
+      } catch {
+        if (!alive) return
+        setUserName('用户')
+        setUserSub('设置')
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [])
 
   useEffect(() => {
     if (booted.current) return
@@ -548,6 +596,19 @@ function ChatPage({
     setIsSending(false)
   }
 
+  async function onFollowUp(prompt: string) {
+    const q = prompt.trim()
+    if (!q || isSending) return
+    try {
+      const sid = await ensureSession()
+      setQuestion('')
+      await runAsk(q, sid)
+    } catch (err) {
+      setIsSending(false)
+      setLastActionHint(err instanceof Error ? err.message : '发送失败')
+    }
+  }
+
   function openCitation(source: StreamCitation) {
     onOpenSource({
       id: String(source.docId),
@@ -674,8 +735,8 @@ function ChatPage({
             <div className="qaUserMeta">
               <UserCircle2 size={22} />
               <div>
-                <div className="qaUserName">张明</div>
-                <div className="qaUserSub">设置</div>
+                <div className="qaUserName">{userName}</div>
+                <div className="qaUserSub">{userSub}</div>
               </div>
             </div>
             <Settings size={16} />
@@ -931,6 +992,24 @@ function ChatPage({
                           <span>重新回答</span>
                         </button>
                       </div>
+
+                      {!isSending && doneInfo?.status === 'OK' && (doneInfo.followUps?.length || 0) > 0 ? (
+                        <section className="qaFollowUps" aria-label="推荐追问">
+                          {doneInfo.followUps!.map((item) => (
+                            <button
+                              key={item}
+                              type="button"
+                              className="qaFollowUpBtn"
+                              disabled={isSending}
+                              onClick={() => onFollowUp(item)}
+                            >
+                              <span>{item}</span>
+                              <ChevronRight size={16} />
+                            </button>
+                          ))}
+                        </section>
+                      ) : null}
+
                       {ratingOpen ? (
                         <div className="qaRatingRow" role="group" aria-label="回答评分">
                           {[1, 2, 3, 4, 5].map((score) => (

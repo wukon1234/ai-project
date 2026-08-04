@@ -1,12 +1,10 @@
 package com.zhishiyun.kb.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.zhishiyun.kb.entity.KbAclEntity;
 import com.zhishiyun.kb.entity.KbChunkEntity;
 import com.zhishiyun.kb.entity.KbDocumentEntity;
 import com.zhishiyun.kb.entity.KbLibraryEntity;
 import com.zhishiyun.kb.entity.UsageEventEntity;
-import com.zhishiyun.kb.mapper.KbAclMapper;
 import com.zhishiyun.kb.mapper.KbChunkMapper;
 import com.zhishiyun.kb.mapper.KbDocumentMapper;
 import com.zhishiyun.kb.mapper.KbLibraryMapper;
@@ -18,14 +16,17 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 /** 知识搜索：ACL 过滤、关键词匹配、热搜与排序分页。 */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SearchService {
@@ -35,7 +36,7 @@ public class SearchService {
     /** 进程内热搜计数：词 -> 次数，仅单实例有效 */
     private static final Map<String, Long> HOT_COUNTS = new java.util.concurrent.ConcurrentHashMap<String, Long>();
 
-    private final KbAclMapper kbAclMapper;
+    private final LibraryAccessService libraryAccessService;
     private final KbDocumentMapper kbDocumentMapper;
     private final KbChunkMapper kbChunkMapper;
     private final KbLibraryMapper kbLibraryMapper;
@@ -43,20 +44,26 @@ public class SearchService {
 
     /** 在用户有权知识库内搜索文档，支持分类过滤与排序分页。 */
     public Map<String, Object> search(Long userId, String q, String category, String sort, int page, int size) {
-        List<String> scopes = kbAclMapper.selectList(new LambdaQueryWrapper<KbAclEntity>().eq(KbAclEntity::getUserId, userId))
-                .stream().map(KbAclEntity::getLibraryCode).distinct().collect(Collectors.toList());
+        // 与浏览/问答一致：用户 ACL + 部门 ACL + 公开库；管理员可读全部
+        Set<String> scopes = libraryAccessService.accessibleLibraryCodes(userId);
         if (scopes.isEmpty()) {
+            log.info("search empty scopes, userId={}", userId);
             return pageResult(page, size, new ArrayList<Map<String, Object>>());
         }
-        LambdaQueryWrapper<KbDocumentEntity> wrapper = new LambdaQueryWrapper<KbDocumentEntity>()
-                .in(KbDocumentEntity::getLibraryCode, scopes);
         if (StringUtils.hasText(category) && !"all".equals(category)) {
-            wrapper.eq(KbDocumentEntity::getLibraryCode, category);
+            if (!scopes.contains(category)) {
+                log.info("search category not in acl, userId={}, category={}", userId, category);
+                return pageResult(page, size, new ArrayList<Map<String, Object>>());
+            }
+            scopes = java.util.Collections.singleton(category);
         }
+
+        LambdaQueryWrapper<KbDocumentEntity> wrapper = new LambdaQueryWrapper<KbDocumentEntity>()
+                .in(KbDocumentEntity::getLibraryCode, scopes)
+                .eq(KbDocumentEntity::getStatus, "READY");
         List<KbDocumentEntity> docs = kbDocumentMapper.selectList(wrapper);
         List<SearchRow> rows = new ArrayList<SearchRow>();
         for (KbDocumentEntity doc : docs) {
-            String body = (doc.getTitle() == null ? "" : doc.getTitle()) + " " + (doc.getSummary() == null ? "" : doc.getSummary());
             List<KbChunkEntity> chunkHits = new ArrayList<KbChunkEntity>();
             if (StringUtils.hasText(q)) {
                 List<KbChunkEntity> chunks = kbChunkMapper.selectList(new LambdaQueryWrapper<KbChunkEntity>()
@@ -103,6 +110,8 @@ public class SearchService {
         }
         Map<String, Object> data = pageResult(page, size, list);
         data.put("total", rows.size());
+        log.info("search ok, userId={}, q={}, category={}, scopes={}, hits={}",
+                userId, q, category, scopes.size(), rows.size());
         return data;
     }
 

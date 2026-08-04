@@ -12,6 +12,11 @@
   flex-direction: column;
   gap: 18px;
   padding: 20px 16px;
+  height: 100svh;
+  max-height: 100svh;
+  position: sticky;
+  top: 0;
+  overflow: hidden;
   border-right: 1px solid var(--divider);
   background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(12px);
@@ -84,6 +89,7 @@
 
 .qaHistoryGroups {
   flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;
@@ -149,7 +155,10 @@
 }
 
 .qaSidebarFooter {
-  padding-top: 6px;
+  margin-top: auto;
+  flex-shrink: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--divider);
 }
 
 .qaUserCard {
@@ -642,6 +651,55 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.qaFollowUps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.qaFollowUpBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--divider);
+  background: rgba(248, 250, 252, 0.95);
+  color: var(--text);
+  text-align: left;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.qaFollowUpBtn span {
+  flex: 1;
+}
+
+.qaFollowUpBtn:hover:not(:disabled) {
+  border-color: rgba(37, 99, 235, 0.28);
+  background: rgba(239, 246, 255, 0.95);
+  color: #1d4ed8;
+}
+
+.qaFollowUpBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+html[data-theme='dark'] .qaFollowUpBtn {
+  background: rgba(31, 41, 55, 0.9);
+}
+
+html[data-theme='dark'] .qaFollowUpBtn:hover:not(:disabled) {
+  background: rgba(30, 58, 138, 0.35);
+  color: #bfdbfe;
 }
 
 .qaRatingRow {
@@ -3903,6 +3961,96 @@ html[data-theme='dark'] {
 .hpQuickCard:not(.hpQuickCardStatic):hover {
   border-color: rgba(37, 99, 235, 0.3);
   background: rgba(96, 165, 250, 0.08);
+}
+
+.hpQuickCardActive {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.08);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.12);
+}
+
+.hpTipsPanel {
+  margin: -6px 0 18px;
+  padding: 18px 18px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.95), rgba(255, 255, 255, 0.92));
+  box-shadow: var(--shadow-sm);
+}
+
+.hpTipsHeader h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.hpTipsHeader p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.hpTipsList {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hpTipsList li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #2563eb;
+}
+
+.hpTipsList strong {
+  display: block;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.hpTipsList span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  font-weight: 600;
+}
+
+.hpTipsActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.hpTipsPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.hpTipsPrimary:hover {
+  background: #1d4ed8;
+}
+
+html[data-theme='dark'] .hpTipsPanel {
+  background: linear-gradient(180deg, rgba(30, 58, 138, 0.28), rgba(31, 41, 55, 0.92));
+  border-color: rgba(96, 165, 250, 0.28);
 }
 
 .hpFaqTitle {

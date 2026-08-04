@@ -52,6 +52,8 @@ export type ChatMessage = {
   content?: string
   /** 识别/思考过程，历史回显用 */
   thinkingContent?: string
+  /** 推荐追问，历史回显用（数组或 JSON 字符串） */
+  followUps?: string[] | string
   answerStatus?: string
   elapsedMs?: number
   createdAt?: string
@@ -90,7 +92,10 @@ export type StreamDone = {
   elapsedMs: number
   status: 'OK' | 'NO_ANSWER' | string
   disclaimer?: string
+  /** NO_ANSWER 引导建议 */
   suggestions?: string[]
+  /** 正常回答的推荐追问（与主回答同一次生成） */
+  followUps?: string[]
   contact?: {
     name: string
     title: string

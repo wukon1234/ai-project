@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CircleHelp, MessageSquare, Search, Sparkles } from 'lucide-react'
+import { Check, CircleHelp, MessageSquare, Search, Sparkles } from 'lucide-react'
 import { listFaqs, type HelpFaq } from './api'
 
 const FALLBACK_FAQS: HelpFaq[] = [
@@ -25,15 +25,35 @@ const FALLBACK_FAQS: HelpFaq[] = [
   },
 ]
 
+const FOLLOW_UP_TIPS = [
+  {
+    title: '补齐场景',
+    detail: '说明角色、部门或业务场景，例如「研发部新人」「一线销售」。',
+  },
+  {
+    title: '限定时间',
+    detail: '加上生效时间或版本，例如「2026 版员工手册」「本季度起」。',
+  },
+  {
+    title: '缩小范围',
+    detail: '在顶栏切换到具体知识库，避免在「全部」里被无关文档干扰。',
+  },
+  {
+    title: '引用上文',
+    detail: '追问时可说「就刚才那条年假规则，司龄 8 个月怎么算」。',
+  },
+]
+
 type HelpPageProps = {
   onBack: () => void
-  onAsk: () => void
+  onAsk: (prompt?: string) => void
   onOpenSearch: () => void
 }
 
 function HelpPage({ onBack, onAsk, onOpenSearch }: HelpPageProps) {
   const [faqs, setFaqs] = useState<HelpFaq[]>(FALLBACK_FAQS)
   const [error, setError] = useState<string | null>(null)
+  const [tipsOpen, setTipsOpen] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -67,7 +87,7 @@ function HelpPage({ onBack, onAsk, onOpenSearch }: HelpPageProps) {
 
       <main className="hpBody">
         <section className="hpQuick">
-          <button type="button" className="hpQuickCard" onClick={onAsk}>
+          <button type="button" className="hpQuickCard" onClick={() => onAsk()}>
             <Sparkles size={18} />
             <div>
               <strong>去提问</strong>
@@ -81,14 +101,54 @@ function HelpPage({ onBack, onAsk, onOpenSearch }: HelpPageProps) {
               <span>浏览企业知识</span>
             </div>
           </button>
-          <div className="hpQuickCard hpQuickCardStatic">
+          <button
+            type="button"
+            className={`hpQuickCard ${tipsOpen ? 'hpQuickCardActive' : ''}`}
+            aria-expanded={tipsOpen}
+            onClick={() => setTipsOpen((v) => !v)}
+          >
             <MessageSquare size={18} />
             <div>
               <strong>追问技巧</strong>
-              <span>补充场景与时间范围</span>
+              <span>{tipsOpen ? '点击收起说明' : '补充场景与时间范围'}</span>
             </div>
-          </div>
+          </button>
         </section>
+
+        {tipsOpen ? (
+          <section className="hpTipsPanel" aria-label="追问技巧说明">
+            <div className="hpTipsHeader">
+              <h2>怎样追问更容易得到准确答案</h2>
+              <p>把场景、时间和范围说清楚，模型就能在有权限的知识库里更精准检索。</p>
+            </div>
+            <ul className="hpTipsList">
+              {FOLLOW_UP_TIPS.map((tip) => (
+                <li key={tip.title}>
+                  <Check size={16} />
+                  <div>
+                    <strong>{tip.title}</strong>
+                    <span>{tip.detail}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="hpTipsActions">
+              <button
+                type="button"
+                className="hpTipsPrimary"
+                onClick={() =>
+                  onAsk('司龄 8 个月可以休年假吗？请按 2026 版员工手册说明。')
+                }
+              >
+                <Sparkles size={16} />
+                用示例去提问
+              </button>
+              <button type="button" className="hpGhostBtn" onClick={() => setTipsOpen(false)}>
+                收起
+              </button>
+            </div>
+          </section>
+        ) : null}
 
         <section className="hpFaq">
           <div className="hpFaqTitle">

@@ -157,7 +157,7 @@ public class ChatStreamService {
             thinkingBuf.append(thinkGuide);
             send(emitter, "thinking", mapOf("content", thinkGuide));
 
-            StringBuilder answerBuf = new StringBuilder();
+            AnswerFollowupSplitter splitter = new AnswerFollowupSplitter();
             boolean[] generating = {false};
             streamAnswer(question, selected, (type, content) -> {
                 if ("thinking".equals(type)) {
@@ -172,28 +172,34 @@ public class ChatStreamService {
                             "phase", "answer",
                             "message", "正在生成回答…"));
                 }
-                answerBuf.append(content);
-                send(emitter, "delta", mapOf("content", content));
+                splitter.onChunk(content, part -> send(emitter, "delta", mapOf("content", part)));
             });
+            splitter.finish(part -> send(emitter, "delta", mapOf("content", part)));
 
-            String answer = answerBuf.toString();
+            String answer = splitter.answerText();
+            List<String> followUps = splitter.followUps(3);
             ChatMessageEntity aiMsg = new ChatMessageEntity();
             aiMsg.setSessionId(sessionId);
             aiMsg.setRole(MessageRole.assistant.name());
             aiMsg.setAnswerStatus(AnswerStatus.OK.name());
             aiMsg.setContent(answer);
             aiMsg.setThinkingContent(thinkingBuf.toString());
+            aiMsg.setFollowUps(toJsonArray(followUps));
             aiMsg.setElapsedMs((int) (System.currentTimeMillis() - start));
             chatMessageMapper.insert(aiMsg);
             for (ChatCitationEntity cite : citations) {
                 cite.setMessageId(aiMsg.getId());
                 chatCitationMapper.insert(cite);
             }
-            send(emitter, "done", mapOf(
+            java.util.Map<String, Object> done = mapOf(
                     "messageId", String.valueOf(aiMsg.getId()),
                     "elapsedMs", System.currentTimeMillis() - start,
                     "status", "OK",
-                    "disclaimer", "AI 可能出错，请以原文为准"));
+                    "disclaimer", "AI 可能出错，请以原文为准");
+            if (!followUps.isEmpty()) {
+                done.put("followUps", followUps);
+            }
+            send(emitter, "done", done);
             emitter.complete();
         } catch (Exception e) {
             log.error("ask stream failed", e);
@@ -238,7 +244,7 @@ public class ChatStreamService {
         emitter.complete();
     }
 
-    /** 基于检索片段流式调用 LLM 生成可溯源回答。 */
+    /** 基于检索片段流式调用 LLM 生成可溯源回答（同请求附带推荐追问）。 */
     private void streamAnswer(String question, List<SearchHit> hits, LlmClient.StreamSink sink) throws Exception {
         StringBuilder context = new StringBuilder();
         int idx = 1;
@@ -250,10 +256,24 @@ public class ChatStreamService {
         String system = "你是企业知识库助手。请仅依据给定检索片段回答用户问题。"
                 + "输出要求：使用清晰层级与要点列表；关键事实句末用 [n] 标注引用来源；"
                 + "不要编造片段中不存在的事实；若片段不足以回答，请明确说明。"
-                + "不要输出与问题无关的开场白。";
+                + "不要输出与问题无关的开场白。"
+                + "正文回答结束后，必须另起一行严格按下列格式输出 3 条推荐追问（不要多写说明文字）：\n"
+                + AnswerFollowupSplitter.START + "\n"
+                + "追问1\n追问2\n追问3\n"
+                + AnswerFollowupSplitter.END + "\n"
+                + "推荐追问必须紧扣用户当前问题与你刚给出的回答，具体可直接作为下一轮提问；"
+                + "禁止随机、泛泛或与原问题重复。";
         String user = "用户问题：\n" + (question == null ? "" : question)
                 + "\n\n检索片段：\n" + context;
         llmClient.chatStream(system, user, sink);
+    }
+
+    private String toJsonArray(List<String> items) {
+        try {
+            return objectMapper.writeValueAsString(items == null ? java.util.Collections.emptyList() : items);
+        } catch (Exception e) {
+            return "[]";
+        }
     }
 
     private String contextSnippet(String text) {

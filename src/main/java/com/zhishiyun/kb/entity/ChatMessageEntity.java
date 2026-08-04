@@ -17,6 +17,8 @@ public class ChatMessageEntity {
     private String content;
     /** 识别/思考过程，供历史会话回显 */
     private String thinkingContent;
+    /** 推荐追问 JSON 数组字符串，如 ["q1","q2"] */
+    private String followUps;
     private Integer elapsedMs;
     private String answerStatus;
     private String modelName;
