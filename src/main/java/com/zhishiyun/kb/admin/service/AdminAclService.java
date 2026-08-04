@@ -20,6 +20,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+/**
+ * 知识库 ACL：按用户或部门授权 READ，以及「全员可读」开关。
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminAclService {
@@ -30,6 +33,7 @@ public class AdminAclService {
     private final AdminLibraryService adminLibraryService;
     private final AuditService auditService;
 
+    /** 返回指定知识库的全部 ACL 规则（含展示用 subjectLabel）。 */
     public List<AdminAclRule> listByLibrary(String libraryCode) {
         KbLibraryEntity lib = adminLibraryService.requireByCode(libraryCode);
         List<KbAclEntity> rows = kbAclMapper.selectList(new LambdaQueryWrapper<KbAclEntity>()
@@ -42,6 +46,9 @@ public class AdminAclService {
         return rules;
     }
 
+    /**
+     * 新增 ACL；subjectType 仅支持 user / dept，同主体不可重复授权。
+     */
     @Transactional
     public AdminAclRule add(Long actorId, String libraryCode, AdminAclCreateRequest req) {
         KbLibraryEntity lib = adminLibraryService.requireByCode(libraryCode);
@@ -104,6 +111,7 @@ public class AdminAclService {
                 "移除 ACL " + entity.getLibraryCode());
     }
 
+    /** 更新知识库 public_read 标志（1 全员可读 / 0 需 ACL）。 */
     @Transactional
     public void setPublicRead(Long actorId, String libraryCode, boolean publicRead) {
         KbLibraryEntity lib = adminLibraryService.requireByCode(libraryCode);

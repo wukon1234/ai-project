@@ -20,6 +20,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+/**
+ * 管理后台知识库 CRUD：维护 code/名称/标签/全员可读等元数据。
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminLibraryService {
@@ -30,6 +33,7 @@ public class AdminLibraryService {
     private final KbDocumentMapper kbDocumentMapper;
     private final AuditService auditService;
 
+    /** 列出知识库；keyword 匹配 name 或 code。 */
     public List<AdminLibraryRecord> list(String keyword) {
         LambdaQueryWrapper<KbLibraryEntity> q = new LambdaQueryWrapper<KbLibraryEntity>()
                 .orderByAsc(KbLibraryEntity::getId);
@@ -72,6 +76,7 @@ public class AdminLibraryService {
         return toRecord(kbLibraryMapper.selectById(entity.getId()));
     }
 
+    /** 按 code 加载知识库，不存在则抛业务异常。 */
     public KbLibraryEntity requireByCode(String code) {
         KbLibraryEntity entity = kbLibraryMapper.selectOne(new LambdaQueryWrapper<KbLibraryEntity>()
                 .eq(KbLibraryEntity::getCode, code)
@@ -97,6 +102,7 @@ public class AdminLibraryService {
                 .build();
     }
 
+    /** 标签统一加 # 前缀后空格拼接入库。 */
     private String joinTags(List<String> tags) {
         if (tags == null || tags.isEmpty()) {
             return "";

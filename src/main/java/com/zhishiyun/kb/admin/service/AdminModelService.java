@@ -20,10 +20,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+/**
+ * 管理后台模型配置：以 application.yml 为默认，与 sys_config 中 JSON 合并；
+ * 对外掩码 apiKey，运行时通过 {@link #runtimeConfig()} 提供未掩码配置。
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminModelService {
 
+    /** sys_config 中模型配置的键名。 */
     public static final String CONFIG_KEY = "admin.model.config";
 
     private final SysConfigMapper sysConfigMapper;
@@ -63,6 +68,7 @@ public class AdminModelService {
     @Value("${kb.rate-limit.ask-per-minute:10}")
     private int askPerMinute;
 
+    /** 返回合并配置，并对 llm/embedding/vision 的 apiKey 做掩码。 */
     public Map<String, Object> getMaskedConfig() {
         Map<String, Object> cfg = loadMerged();
         maskKey(cfg, "llm");
@@ -71,6 +77,7 @@ public class AdminModelService {
         return cfg;
     }
 
+    /** 按段合并保存；掩码态 apiKey（含 ****）不会覆盖库内原值。 */
     @Transactional
     @SuppressWarnings("unchecked")
     public Map<String, Object> save(Long actorId, Map<String, Object> body) {
@@ -87,6 +94,7 @@ public class AdminModelService {
         return getMaskedConfig();
     }
 
+    /** HTTP 探测配置段 baseUrl 是否可达（非鉴权级连通性检查）。 */
     @SuppressWarnings("unchecked")
     public Map<String, Object> testConnection(String target) {
         Map<String, Object> cfg = loadMerged();
@@ -236,6 +244,7 @@ public class AdminModelService {
         }
     }
 
+    /** yml 默认值 ← 库内存储覆盖，得到运行时合并配置。 */
     private Map<String, Object> loadMerged() {
         Map<String, Object> defaults = defaults();
         SysConfigEntity cfg = sysConfigMapper.selectOne(new LambdaQueryWrapper<SysConfigEntity>()

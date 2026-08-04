@@ -13,6 +13,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 管理后台 — 审计日志查询与导出。
+ * <p>KB_ADMIN 仅可见知识相关动作；SYS_ADMIN 可见全部。range 支持 today / 7d / 30d / custom。
+ */
 @RestController
 @RequestMapping("/api/v1/admin/audit")
 @RequiredArgsConstructor
@@ -20,6 +24,7 @@ public class AdminAuditController {
 
     private final AdminAuditQueryService adminAuditQueryService;
 
+    /** 分页查询审计日志。 */
     @GetMapping
     public Result<?> list(
             @RequestParam(value = "range", required = false) String range,
@@ -35,6 +40,7 @@ public class AdminAuditController {
         return Result.ok(adminAuditQueryService.query(user, range, from, to, actor, actions, targetType, keyword, page, size));
     }
 
+    /** 按当前筛选条件导出 CSV（最多 5000 条）。 */
     @GetMapping("/export")
     public ResponseEntity<byte[]> export(
             @RequestParam(value = "range", required = false) String range,

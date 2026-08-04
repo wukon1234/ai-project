@@ -25,6 +25,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+/**
+ * 管理后台用户领域服务：查询、创建、审核、启停、改角色、重置密码。
+ * <p>用户 status：0 待审 / 1 启用 / 2 禁用。关键写操作会记审计日志。
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminUserService {
@@ -38,6 +42,7 @@ public class AdminUserService {
     private final PasswordEncoder passwordEncoder;
     private final AuditService auditService;
 
+    /** 按状态/角色过滤后，再对姓名、工号、邮箱等做关键字内存过滤并分页。 */
     public PageResult<AdminUserRecord> list(Integer status, String role, String keyword, int page, int size) {
         int pageNum = Math.max(page, 1);
         int pageSize = Math.min(Math.max(size, 1), 100);
@@ -69,6 +74,7 @@ public class AdminUserService {
         return new PageResult<AdminUserRecord>(total, pageNum, pageSize, filtered.subList(from, to));
     }
 
+    /** 创建用户并写入默认偏好；邮箱不可重复。 */
     @Transactional
     public AdminUserRecord create(Long actorId, AdminUserCreateRequest req) {
         if (sysUserMapper.selectCount(new LambdaQueryWrapper<SysUserEntity>().eq(SysUserEntity::getEmail, req.getEmail())) > 0) {
@@ -149,6 +155,9 @@ public class AdminUserService {
         return toRecord(user);
     }
 
+    /**
+     * 重置为随机临时密码并返回明文（仅联调；生产应改为邮件/短信下发）。
+     */
     @Transactional
     public String resetPassword(Long actorId, Long userId) {
         SysUserEntity user = requireUser(userId);
@@ -159,6 +168,7 @@ public class AdminUserService {
         return "已生成临时密码（未发邮件，仅联调返回）：" + temp;
     }
 
+    /** 保证系统中至少保留一名启用中的 SYS_ADMIN。 */
     private void ensureNotLastSysAdmin(SysUserEntity user, boolean disabling) {
         if (!AdminAuthHelper.ROLE_SYS_ADMIN.equals(user.getRoleCode())) {
             return;

@@ -4,6 +4,7 @@ import java.util.List;
 import lombok.Builder;
 import lombok.Data;
 
+/** 管理后台仪表盘概览响应。 */
 @Data
 @Builder
 public class AdminDashboardResponse {

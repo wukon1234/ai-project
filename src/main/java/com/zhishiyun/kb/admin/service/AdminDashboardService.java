@@ -15,6 +15,10 @@ import com.zhishiyun.kb.model.AuthUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+/**
+ * 管理后台仪表盘：聚合知识库/文档/入库失败数，以及近期任务与审计。
+ * <p>pendingUserCount 仅 SYS_ADMIN 返回；KB_ADMIN 为 null。
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminDashboardService {
@@ -26,6 +30,7 @@ public class AdminDashboardService {
     private final AdminIngestService adminIngestService;
     private final AdminAuditQueryService adminAuditQueryService;
 
+    /** 组装首页概览数据。 */
     public AdminDashboardResponse overview(AuthUser user) {
         long libraryCount = kbLibraryMapper.selectCount(null);
         long totalDoc = kbDocumentMapper.selectCount(null);

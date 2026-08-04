@@ -4,6 +4,7 @@ import javax.validation.constraints.Email;
 import javax.validation.constraints.NotBlank;
 import lombok.Data;
 
+/** 管理后台创建用户请求体。 */
 @Data
 public class AdminUserCreateRequest {
     @NotBlank
@@ -15,6 +16,7 @@ public class AdminUserCreateRequest {
     private String empNo;
     private String deptName;
     private String deptCode;
+    /** 缺省为 EMPLOYEE */
     private String role;
     @NotBlank
     private String password;

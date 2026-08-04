@@ -21,12 +21,17 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 角色权限矩阵：三角色（EMPLOYEE / KB_ADMIN / SYS_ADMIN）的能力开关，存于 sys_config。
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminRoleService {
 
+    /** sys_config 中角色矩阵的键名。 */
     public static final String CONFIG_KEY = "admin.role.matrix";
 
+    /** 可配置的权限位清单。 */
     private static final List<String> PERMS = Arrays.asList(
             "admin.access",
             "library.read", "library.write",
@@ -42,6 +47,7 @@ public class AdminRoleService {
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
 
+    /** 返回三角色卡片：名称、说明、人数、权限快照。 */
     public List<Map<String, Object>> listRoles() {
         Map<String, Map<String, Boolean>> matrix = loadMatrix();
         List<Map<String, Object>> list = new ArrayList<Map<String, Object>>();
@@ -75,7 +81,7 @@ public class AdminRoleService {
                 }
             }
         }
-        // 硬约束
+        // 硬约束：员工不可进后台；系统管理员权限位始终全开
         if (AdminAuthHelper.ROLE_EMPLOYEE.equals(roleCode)) {
             normalized.put("admin.access", false);
         }
@@ -142,6 +148,7 @@ public class AdminRoleService {
         }
     }
 
+    /** 内置默认矩阵：员工全关；知识管理员开放知识相关；系统管理员全开。 */
     private Map<String, Boolean> defaultFor(String role) {
         Map<String, Boolean> m = new LinkedHashMap<String, Boolean>();
         for (String p : PERMS) {

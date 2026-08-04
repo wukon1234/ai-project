@@ -14,7 +14,11 @@ import org.springframework.stereotype.Component;
 
 /**
  * 本地/联调：确保管理后台 Mock 账号存在且密码与前端一致。
- * admin@zhishiyun.com / admin123；kbadmin@zhishiyun.com / kb123
+ * <ul>
+ *   <li>admin@zhishiyun.com / admin123 → SYS_ADMIN</li>
+ *   <li>kbadmin@zhishiyun.com / kb123 → KB_ADMIN</li>
+ * </ul>
+ * 已存在账号会校正角色、状态与密码哈希。
  */
 @Slf4j
 @Component

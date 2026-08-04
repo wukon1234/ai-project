@@ -24,6 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 管理后台入库编排：上传、任务查询、失败重试、文档重建索引；实际处理委托 {@link IngestService}。
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminIngestService {
@@ -36,6 +39,7 @@ public class AdminIngestService {
     private final KbLibraryMapper kbLibraryMapper;
     private final AuditService auditService;
 
+    /** 上传文件并触发入库，同时写审计。 */
     @Transactional
     public IngestUploadResponse upload(Long actorId, MultipartFile file, String libraryCode, String title, String category) {
         IngestUploadResponse resp = ingestService.upload(file, libraryCode, title, category);
@@ -52,6 +56,7 @@ public class AdminIngestService {
         return toRecord(task);
     }
 
+    /** 入库任务列表；库/状态/标题关键字在内存中过滤后分页。 */
     public PageResult<AdminIngestTaskRecord> list(String libraryCode, String status, String keyword, int page, int size) {
         int pageNum = Math.max(page, 1);
         int pageSize = Math.min(Math.max(size, 1), 100);
@@ -78,6 +83,7 @@ public class AdminIngestService {
         return new PageResult<AdminIngestTaskRecord>(total, pageNum, pageSize, records.subList(from, to));
     }
 
+    /** 仪表盘用：最近 N 条入库任务。 */
     public List<AdminIngestTaskRecord> recent(int limit) {
         List<IngestTaskEntity> tasks = ingestTaskMapper.selectList(new LambdaQueryWrapper<IngestTaskEntity>()
                 .orderByDesc(IngestTaskEntity::getCreatedAt)
@@ -85,6 +91,7 @@ public class AdminIngestService {
         return tasks.stream().map(this::toRecord).collect(Collectors.toList());
     }
 
+    /** 仅 FAILED 任务可重试，本质为对该文档再次 reindex。 */
     @Transactional
     public IngestUploadResponse retry(Long actorId, Long taskId) {
         IngestTaskEntity task = ingestTaskMapper.selectById(taskId);

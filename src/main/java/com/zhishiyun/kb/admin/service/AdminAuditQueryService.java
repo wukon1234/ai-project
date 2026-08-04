@@ -31,11 +31,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+/**
+ * 管理后台审计查询：按时间范围/操作人/动作过滤，解析展示字段，并支持 CSV 导出。
+ * <p>非 SYS_ADMIN 自动限制为 {@link #KB_ACTIONS} 知识相关动作。
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminAuditQueryService {
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    /** KB_ADMIN 可见的动作白名单。 */
     private static final Set<String> KB_ACTIONS = new HashSet<String>(Arrays.asList(
             "INGEST_UPLOAD", "INGEST_RETRY", "INGEST_REINDEX", "ACL_UPDATE", "LIBRARY_CREATE", "LIBRARY_UPDATE",
             "DOWNLOAD_DOC", "PREVIEW_DOC", "SHARE_DOC", "SHARE_SESSION", "DOWNLOAD", "SHARE"));
@@ -77,11 +82,17 @@ public class AdminAuditQueryService {
     private final KbDocumentMapper kbDocumentMapper;
     private final KbLibraryMapper kbLibraryMapper;
 
+    /** 仪表盘用：按当前视角权限取最近审计。 */
     public List<AdminAuditRecord> recent(AuthUser viewer, int limit) {
         PageResult<AdminAuditRecord> page = query(viewer, null, null, null, null, null, null, null, 1, limit);
         return page.getRecords();
     }
 
+    /**
+     * 审计分页查询。
+     * @param range today / 7d / 30d / custom；custom 时配合 from、to（yyyy-MM-dd）
+     * @param actions 逗号分隔的动作码，可空
+     */
     public PageResult<AdminAuditRecord> query(
             AuthUser viewer,
             String range,
@@ -175,6 +186,7 @@ public class AdminAuditQueryService {
         return new PageResult<AdminAuditRecord>(total, pageNum, pageSize, filtered.subList(fromIdx, toIdx));
     }
 
+    /** 导出与 query 相同筛选条件的 CSV（上限 5000 条）。 */
     public byte[] exportCsv(AuthUser viewer, String range, String from, String to, String actor,
                             String actions, String targetType, String keyword) {
         PageResult<AdminAuditRecord> page = query(viewer, range, from, to, actor, actions, targetType, keyword, 1, 5000);

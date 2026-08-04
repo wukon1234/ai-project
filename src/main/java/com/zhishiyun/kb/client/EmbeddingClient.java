@@ -43,6 +43,7 @@ public class EmbeddingClient {
     /** 批量向量化；失败抛业务异常（入库任务应 FAILED）。 */
     public List<float[]> embed(List<String> texts) {
         if (texts == null || texts.isEmpty()) {
+            // 防止空指针
             return new ArrayList<float[]>();
         }
         List<float[]> all = new ArrayList<float[]>(texts.size());

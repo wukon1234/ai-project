@@ -5,6 +5,7 @@ import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Pattern;
 import lombok.Data;
 
+/** 创建知识库请求体；code 创建后不可改。 */
 @Data
 public class AdminLibraryCreateRequest {
     @NotBlank
