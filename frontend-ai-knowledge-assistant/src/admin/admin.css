@@ -1228,6 +1228,79 @@ html[data-theme='dark'] .adminLoginPanel {
   width: min(520px, 100%);
 }
 
+.adminDrawerDoc {
+  width: min(920px, 100%);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 32px);
+}
+
+.adminDrawerHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.adminDrawerHead h2 {
+  margin: 0 0 4px;
+}
+
+.adminDocList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(60vh, 520px);
+  overflow: auto;
+}
+
+.adminDocListItem {
+  text-align: left;
+  border: 1px solid var(--divider);
+  background: var(--card);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: inherit;
+  color: inherit;
+}
+
+.adminDocListItem:hover {
+  border-color: #93c5fd;
+  background: rgba(59, 130, 246, 0.04);
+}
+
+.adminDocPreview {
+  flex: 1;
+  min-height: 360px;
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.adminDocPreview iframe {
+  width: 100%;
+  height: min(62vh, 640px);
+  border: 0;
+  background: #fff;
+}
+
+.adminModalActions--split {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.adminModalActionsRight {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
 .adminMatrix {
   display: flex;
   flex-direction: column;

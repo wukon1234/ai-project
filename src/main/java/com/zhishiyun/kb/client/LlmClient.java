@@ -28,6 +28,8 @@ import org.springframework.util.StringUtils;
 public class LlmClient {
 
     private static final MediaType JSON = MediaType.parse("application/json");
+    /** 对 429/503 等瞬时过载做有限重试。 */
+    private static final int MAX_RETRY = 3;
 
     private final ObjectMapper objectMapper;
     private final AdminModelService adminModelService;
@@ -50,52 +52,114 @@ public class LlmClient {
         double temperature = doubleVal(llm.get("temperature"), 0.2);
         int maxTokens = intVal(llm.get("maxTokens"), 2048);
 
-        try {
-            ObjectNode body = objectMapper.createObjectNode();
-            body.put("model", model);
-            body.put("temperature", temperature);
-            body.put("max_tokens", maxTokens);
-            ArrayNode messages = body.putArray("messages");
-            if (StringUtils.hasText(systemPrompt)) {
-                ObjectNode sys = messages.addObject();
-                sys.put("role", "system");
-                sys.put("content", systemPrompt);
+        Exception last = null;
+        for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
+            try {
+                return chatOnce(baseUrl, model, apiKey, timeoutSec, temperature, maxTokens,
+                        systemPrompt, userPrompt, attempt);
+            } catch (BizException e) {
+                last = e;
+                if (!isRetryable(e) || attempt >= MAX_RETRY) {
+                    throw e;
+                }
+                sleepBackoff(attempt);
+            } catch (Exception e) {
+                last = e;
+                if (attempt >= MAX_RETRY) {
+                    break;
+                }
+                sleepBackoff(attempt);
             }
-            ObjectNode user = messages.addObject();
-            user.put("role", "user");
-            user.put("content", userPrompt == null ? "" : userPrompt);
+        }
+        log.error("llm chat failed after retries", last);
+        if (last instanceof BizException) {
+            throw (BizException) last;
+        }
+        throw new BizException(ErrorCode.SYSTEM_ERROR,
+                last == null || last.getMessage() == null ? "LLM 调用异常" : last.getMessage());
+    }
 
-            OkHttpClient client = new OkHttpClient.Builder()
-                    .connectTimeout(Duration.ofSeconds(Math.min(timeoutSec, 30)))
-                    .readTimeout(Duration.ofSeconds(timeoutSec))
-                    .callTimeout(Duration.ofSeconds(timeoutSec + 5))
-                    .build();
-            Request request = new Request.Builder()
-                    .url(trimSlash(baseUrl) + "/chat/completions")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .header("Content-Type", "application/json")
-                    .post(RequestBody.create(objectMapper.writeValueAsString(body), JSON))
-                    .build();
-            try (Response response = client.newCall(request).execute()) {
-                String respBody = response.body() == null ? "" : response.body().string();
-                if (!response.isSuccessful()) {
-                    log.warn("llm api failed status={} body={}", response.code(), abbreviate(respBody));
-                    throw new BizException(ErrorCode.SYSTEM_ERROR,
-                            "LLM 调用失败 HTTP " + response.code());
+    private String chatOnce(
+            String baseUrl,
+            String model,
+            String apiKey,
+            int timeoutSec,
+            double temperature,
+            int maxTokens,
+            String systemPrompt,
+            String userPrompt,
+            int attempt) throws Exception {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("model", model);
+        body.put("temperature", temperature);
+        body.put("max_tokens", maxTokens);
+        ArrayNode messages = body.putArray("messages");
+        if (StringUtils.hasText(systemPrompt)) {
+            ObjectNode sys = messages.addObject();
+            sys.put("role", "system");
+            sys.put("content", systemPrompt);
+        }
+        ObjectNode user = messages.addObject();
+        user.put("role", "user");
+        user.put("content", userPrompt == null ? "" : userPrompt);
+
+        OkHttpClient client = new OkHttpClient.Builder()
+                .connectTimeout(Duration.ofSeconds(Math.min(timeoutSec, 30)))
+                .readTimeout(Duration.ofSeconds(timeoutSec))
+                .callTimeout(Duration.ofSeconds(timeoutSec + 5))
+                .build();
+        Request request = new Request.Builder()
+                .url(trimSlash(baseUrl) + "/chat/completions")
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .post(RequestBody.create(objectMapper.writeValueAsString(body), JSON))
+                .build();
+        try (Response response = client.newCall(request).execute()) {
+            String respBody = response.body() == null ? "" : response.body().string();
+            if (!response.isSuccessful()) {
+                log.warn("llm api failed attempt={} status={} body={}",
+                        attempt, response.code(), abbreviate(respBody));
+                String providerMsg = extractErrorMessage(respBody);
+                String tip = response.code() == 503
+                        ? "服务商繁忙，请稍后重试或在管理后台切换其它 LLM"
+                        : ("LLM 调用失败 HTTP " + response.code());
+                if (StringUtils.hasText(providerMsg)) {
+                    tip = tip + "：" + providerMsg;
                 }
-                JsonNode root = objectMapper.readTree(respBody);
-                String content = root.path("choices").path(0).path("message").path("content").asText("");
-                if (!StringUtils.hasText(content)) {
-                    throw new BizException(ErrorCode.SYSTEM_ERROR, "LLM 返回空内容");
-                }
-                return content.trim();
+                throw new BizException(ErrorCode.SYSTEM_ERROR, tip, response.code());
             }
-        } catch (BizException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("llm chat failed", e);
-            throw new BizException(ErrorCode.SYSTEM_ERROR,
-                    e.getMessage() == null ? "LLM 调用异常" : e.getMessage());
+            JsonNode root = objectMapper.readTree(respBody);
+            String content = root.path("choices").path(0).path("message").path("content").asText("");
+            if (!StringUtils.hasText(content)) {
+                throw new BizException(ErrorCode.SYSTEM_ERROR, "LLM 返回空内容");
+            }
+            return content.trim();
+        }
+    }
+
+    private static boolean isRetryable(BizException e) {
+        Integer http = e.getHttpStatus();
+        return http != null && (http == 429 || http == 502 || http == 503 || http == 504);
+    }
+
+    private static void sleepBackoff(int attempt) {
+        try {
+            Thread.sleep(400L * attempt);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private String extractErrorMessage(String respBody) {
+        if (!StringUtils.hasText(respBody)) {
+            return "";
+        }
+        try {
+            JsonNode root = objectMapper.readTree(respBody);
+            String msg = root.path("error").path("message").asText("");
+            return StringUtils.hasText(msg) ? msg : "";
+        } catch (Exception ignored) {
+            return "";
         }
     }
 

@@ -42,7 +42,7 @@ public class AdminAuditQueryService {
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     /** KB_ADMIN 可见的动作白名单。 */
     private static final Set<String> KB_ACTIONS = new HashSet<String>(Arrays.asList(
-            "INGEST_UPLOAD", "INGEST_RETRY", "INGEST_REINDEX", "ACL_UPDATE", "LIBRARY_CREATE", "LIBRARY_UPDATE",
+            "INGEST_UPLOAD", "INGEST_RETRY", "INGEST_REINDEX", "ACL_UPDATE", "LIBRARY_CREATE", "LIBRARY_UPDATE", "LIBRARY_DELETE",
             "DOWNLOAD_DOC", "PREVIEW_DOC", "SHARE_DOC", "SHARE_SESSION", "DOWNLOAD", "SHARE"));
 
     private static final Map<String, String> ACTION_LABELS;
@@ -74,6 +74,7 @@ public class AdminAuditQueryService {
         m.put("ROLE_UPDATE", "更新角色");
         m.put("LIBRARY_CREATE", "创建知识库");
         m.put("LIBRARY_UPDATE", "更新知识库");
+        m.put("LIBRARY_DELETE", "删除知识库");
         ACTION_LABELS = Collections.unmodifiableMap(m);
     }
 

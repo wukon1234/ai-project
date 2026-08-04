@@ -51,11 +51,11 @@ const DEFAULT_CONFIG: ModelConfig = {
     timeoutSec: 60,
   },
   embedding: {
-    shareWithLlm: true,
-    baseUrl: 'https://api.openai.com/v1',
-    apiKey: 'sk-mock-admin-key-zhishiyun',
-    modelName: 'text-embedding-3-small',
-    dimension: 1536,
+    shareWithLlm: false,
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    apiKey: '',
+    modelName: 'embedding-2',
+    dimension: 1024,
   },
   ocr: {
     enabled: true,
@@ -108,7 +108,7 @@ function fromPayload(raw: ModelConfigPayload): ModelConfig {
   const ocr = asRecord(raw.ocr)
   const vision = asRecord(raw.vision)
   const rag = asRecord(raw.rag)
-  const dim = num(emb.dimension, 1536)
+  const dim = num(emb.dimension, 1024)
   return {
     llm: {
       provider:
@@ -125,7 +125,7 @@ function fromPayload(raw: ModelConfigPayload): ModelConfig {
       baseUrl: str(emb.baseUrl, DEFAULT_CONFIG.embedding.baseUrl),
       apiKey: str(emb.apiKey, ''),
       modelName: str(emb.modelName, DEFAULT_CONFIG.embedding.modelName),
-      dimension: dim === 1024 ? 1024 : 1536,
+      dimension: dim === 1536 ? 1536 : 1024,
     },
     ocr: {
       enabled: Boolean(ocr.enabled ?? true),
@@ -173,6 +173,13 @@ function maskKey(key: string) {
   if (!key) return ''
   if (key.length <= 6) return '****'
   return `${key.slice(0, 3)}****${key.slice(-4)}`
+}
+
+function embeddingDimension(modelName: string): 1024 | 1536 {
+  const name = modelName.toLowerCase()
+  if (name.includes('text-embedding-3') || name.includes('text-embedding-ada')) return 1536
+  // 智谱 embedding-2 / embedding-3、bge 等常见国内模型为 1024
+  return 1024
 }
 
 function errMsg(err: unknown, fallback: string) {
@@ -436,6 +443,10 @@ export default function AdminModels() {
             />
             与 LLM 共用 Base URL / API Key
           </label>
+          <p className="adminFieldHint" style={{ marginTop: -6, marginBottom: 12 }}>
+            勾选后 Embedding 直接使用上方 LLM 的接口地址与密钥（适合同一厂商同时提供对话与向量）。
+            当前 LLM 为 DeepSeek、Embedding 为智谱时请保持取消勾选，并分别配置。
+          </p>
           <div className="adminFormGrid">
             <label>
               Model Name
@@ -445,13 +456,26 @@ export default function AdminModels() {
                   const modelName = e.target.value
                   update('embedding', {
                     modelName,
-                    dimension: modelName.includes('bge') ? 1024 : 1536,
+                    dimension: embeddingDimension(modelName),
                   })
                 }}
               >
-                <option value="text-embedding-3-small">text-embedding-3-small</option>
-                <option value="bge-m3">bge-m3</option>
+                <option value="embedding-2">embedding-2（智谱，1024 维）</option>
+                <option value="embedding-3">embedding-3（智谱，1024 维）</option>
+                <option value="text-embedding-3-small">text-embedding-3-small（OpenAI，1536 维）</option>
+                <option value="bge-m3">bge-m3（1024 维）</option>
+                {![
+                  'embedding-2',
+                  'embedding-3',
+                  'text-embedding-3-small',
+                  'bge-m3',
+                ].includes(config.embedding.modelName) && (
+                  <option value={config.embedding.modelName}>{config.embedding.modelName}（当前）</option>
+                )}
               </select>
+              <span className="adminFieldHint">
+                需与 Base URL 厂商一致；智谱开放平台请选 embedding-2，勿用 OpenAI 模型名
+              </span>
             </label>
             <label>
               Dimension

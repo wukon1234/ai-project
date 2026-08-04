@@ -54,6 +54,14 @@ public class AdminLibraryController {
         return Result.ok(adminLibraryService.update(user.getUserId(), code, request));
     }
 
+    /** 删除空知识库（有文档时拒绝）。 */
+    @DeleteMapping("/libraries/{code}")
+    public Result<?> delete(@PathVariable String code) {
+        AuthUser user = AdminAuthHelper.requireAdmin();
+        adminLibraryService.delete(user.getUserId(), code);
+        return Result.ok(null);
+    }
+
     /** 列出指定知识库的 ACL 规则。 */
     @GetMapping("/libraries/{code}/acl")
     public Result<?> listAcl(@PathVariable String code) {

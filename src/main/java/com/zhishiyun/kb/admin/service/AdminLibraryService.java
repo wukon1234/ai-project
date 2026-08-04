@@ -6,8 +6,10 @@ import com.zhishiyun.kb.admin.dto.AdminLibraryRecord;
 import com.zhishiyun.kb.admin.dto.AdminLibraryUpdateRequest;
 import com.zhishiyun.kb.common.BizException;
 import com.zhishiyun.kb.common.ErrorCode;
+import com.zhishiyun.kb.entity.KbAclEntity;
 import com.zhishiyun.kb.entity.KbDocumentEntity;
 import com.zhishiyun.kb.entity.KbLibraryEntity;
+import com.zhishiyun.kb.mapper.KbAclMapper;
 import com.zhishiyun.kb.mapper.KbDocumentMapper;
 import com.zhishiyun.kb.mapper.KbLibraryMapper;
 import com.zhishiyun.kb.service.AuditService;
@@ -31,6 +33,7 @@ public class AdminLibraryService {
 
     private final KbLibraryMapper kbLibraryMapper;
     private final KbDocumentMapper kbDocumentMapper;
+    private final KbAclMapper kbAclMapper;
     private final AuditService auditService;
 
     /** 列出知识库；keyword 匹配 name 或 code。 */
@@ -74,6 +77,30 @@ public class AdminLibraryService {
         kbLibraryMapper.updateById(entity);
         auditService.write(actorId, "LIBRARY_UPDATE", "library", code, "更新知识库 " + req.getName());
         return toRecord(kbLibraryMapper.selectById(entity.getId()));
+    }
+
+    /**
+     * 删除知识库：仅允许空库（无文档）；同时清理该库 ACL。
+     */
+    @Transactional
+    public void delete(Long actorId, String code) {
+        KbLibraryEntity entity = requireByCode(code);
+        long docCount = kbDocumentMapper.selectCount(new LambdaQueryWrapper<KbDocumentEntity>()
+                .eq(KbDocumentEntity::getLibraryCode, code));
+        if (docCount > 0) {
+            throw new BizException(ErrorCode.PARAM_INVALID,
+                    "库内仍有 " + docCount + " 份文档，请先清空后再删除知识库");
+        }
+        // 按 library_id / library_code 双条件清理，避免历史脏数据残留
+        kbAclMapper.delete(new LambdaQueryWrapper<KbAclEntity>()
+                .eq(KbAclEntity::getLibraryId, entity.getId())
+                .or()
+                .eq(KbAclEntity::getLibraryCode, code));
+        int removed = kbLibraryMapper.deleteById(entity.getId());
+        if (removed <= 0) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "知识库删除失败或不存在");
+        }
+        auditService.write(actorId, "LIBRARY_DELETE", "library", code, "删除知识库 " + entity.getName());
     }
 
     /** 按 code 加载知识库，不存在则抛业务异常。 */

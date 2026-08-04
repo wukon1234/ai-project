@@ -67,6 +67,15 @@ public class GlobalExceptionHandler {
                 .body(Result.fail(ErrorCode.PARAM_INVALID.getCode(), ErrorCode.PARAM_INVALID.getDefaultMessage()));
     }
 
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Result<Void>> handleMethodNotSupported(
+            org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+        log.warn("Method not supported: {} {}", ex.getMethod(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(Result.fail(ErrorCode.PARAM_INVALID.getCode(),
+                        "接口不支持 " + ex.getMethod() + "，请确认后端已重启到最新版本"));
+    }
+
     @ExceptionHandler(java.io.FileNotFoundException.class)
     public ResponseEntity<Result<Void>> handleFileNotFound(java.io.FileNotFoundException ex) {
         log.warn("File not found: {}", ex.getMessage());

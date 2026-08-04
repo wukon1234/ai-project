@@ -134,6 +134,58 @@ export const realAdminApi = {
     }).then(normalizeLibrary)
   },
 
+  deleteLibrary(code: string) {
+    return adminRequest<null>(`/api/v1/admin/libraries/${encodeURIComponent(code)}`, {
+      method: 'DELETE',
+    })
+  },
+
+  listLibraryDocuments(
+    code: string,
+    params?: { category?: string; q?: string; page?: number; size?: number },
+  ) {
+    return adminRequest<{
+      page: number
+      size: number
+      total: number
+      list: Array<{
+        id: string | number
+        libraryId: string
+        title: string
+        category: string
+        pages: number
+        updatedAt?: string
+        views?: number
+        summary?: string
+        fileType?: string
+      }>
+    }>(`/api/v1/libraries/${encodeURIComponent(code)}/documents${qs({
+      category: params?.category,
+      q: params?.q,
+      page: params?.page,
+      size: params?.size ?? 50,
+    })}`)
+  },
+
+  getDocumentMeta(id: string | number) {
+    return adminRequest<{
+      id: number
+      title: string
+      knowledgeBase: string
+      knowledgeBaseId: string
+      fileType: string
+      pages: number
+      summary?: string
+      updatedAt?: string
+      views?: number
+      category?: string
+    }>(`/api/v1/documents/${id}`)
+  },
+
+  async getDocumentFileBlob(id: string | number) {
+    return adminRequestBlob(`/api/v1/documents/${id}/file`)
+  },
+
   listAcl(libraryCode: string) {
     return adminRequest<AclRule[]>(
       `/api/v1/admin/libraries/${encodeURIComponent(libraryCode)}/acl`,

@@ -26,6 +26,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   ROLE_UPDATE: '更新角色',
   LIBRARY_CREATE: '创建知识库',
   LIBRARY_UPDATE: '更新知识库',
+  LIBRARY_DELETE: '删除知识库',
 }
 
 export const AUDIT_TARGET_TYPE_LABELS: Record<string, string> = {
