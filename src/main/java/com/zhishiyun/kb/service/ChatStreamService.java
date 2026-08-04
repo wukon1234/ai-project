@@ -118,6 +118,7 @@ public class ChatStreamService {
                     "hitCount", selected.size()));
 
             List<ChatCitationEntity> citations = new ArrayList<ChatCitationEntity>();
+            StringBuilder thinkingBuf = new StringBuilder();
             int idx = 1;
             for (SearchHit hit : selected) {
                 KbChunkEntity chunk = hit.getChunk();
@@ -134,8 +135,9 @@ public class ChatStreamService {
                         "knowledgeBase", library == null ? chunk.getLibraryCode() : library.getName(),
                         "knowledgeBaseId", chunk.getLibraryCode(),
                         "excerpt", excerpt(chunk.getContent())));
-                send(emitter, "thinking", mapOf(
-                        "content", "识别来源 [" + idx + "] 《" + title + "》第 " + page + " 页\n"));
+                String recognizeLine = "识别来源 [" + idx + "] 《" + title + "》第 " + page + " 页\n";
+                thinkingBuf.append(recognizeLine);
+                send(emitter, "thinking", mapOf("content", recognizeLine));
                 ChatCitationEntity cite = new ChatCitationEntity();
                 cite.setCiteIndex(idx++);
                 cite.setDocId(chunk.getDocId());
@@ -151,13 +153,15 @@ public class ChatStreamService {
                     "status", "THINKING",
                     "phase", "think",
                     "message", "正在分析检索片段并组织回答…"));
-            send(emitter, "thinking", mapOf(
-                    "content", "结合上述片段核对关键事实，按类别整理要点，并在句末标注引用编号。\n"));
+            String thinkGuide = "结合上述片段核对关键事实，按类别整理要点，并在句末标注引用编号。\n";
+            thinkingBuf.append(thinkGuide);
+            send(emitter, "thinking", mapOf("content", thinkGuide));
 
             StringBuilder answerBuf = new StringBuilder();
             boolean[] generating = {false};
             streamAnswer(question, selected, (type, content) -> {
                 if ("thinking".equals(type)) {
+                    thinkingBuf.append(content);
                     send(emitter, "thinking", mapOf("content", content));
                     return;
                 }
@@ -178,6 +182,7 @@ public class ChatStreamService {
             aiMsg.setRole(MessageRole.assistant.name());
             aiMsg.setAnswerStatus(AnswerStatus.OK.name());
             aiMsg.setContent(answer);
+            aiMsg.setThinkingContent(thinkingBuf.toString());
             aiMsg.setElapsedMs((int) (System.currentTimeMillis() - start));
             chatMessageMapper.insert(aiMsg);
             for (ChatCitationEntity cite : citations) {

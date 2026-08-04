@@ -25,6 +25,7 @@ import {
 import AnswerContent from './AnswerContent'
 import FeedbackModal from './FeedbackModal'
 import type { SourceDoc } from './DocumentReader'
+import { createTypewriter, type TypewriterQueues } from './typewriter'
 import {
   askStream,
   clearSession,
@@ -102,16 +103,100 @@ function ChatPage({
   const scopeRef = useRef<HTMLDivElement | null>(null)
   const booted = useRef(false)
   const sessionsReady = useRef(false)
+  const typewriterRef = useRef<TypewriterQueues | null>(null)
 
   const placeholder = useMemo(() => '继续追问…', [])
   const selectedScopeLabel =
     knowledgeScopes.find((scope) => scope.id === selectedScope)?.label ?? '人事制度库'
+
+  function getTypewriter() {
+    if (!typewriterRef.current) {
+      typewriterRef.current = createTypewriter({
+        charsPerTick: 1,
+        intervalMs: 20,
+        onThinking: (text) => setThinkingText(text),
+        onAnswer: (text) => setAnswerText(text),
+        onAnswerStarted: () => setThinkOpen(false),
+      })
+    }
+    return typewriterRef.current
+  }
+
+  function rebuildThinkingFromCitations(cites: StreamCitation[]) {
+    if (!cites.length) return ''
+    const lines = cites.map(
+      (c) => `识别来源 [${c.index}] 《${c.title}》第 ${c.page} 页`,
+    )
+    lines.push('结合上述片段核对关键事实，按类别整理要点，并在句末标注引用编号。')
+    return lines.join('\n')
+  }
 
   function friendlyError(err: unknown, fallback: string) {
     const msg = err instanceof Error ? err.message : fallback
     // 后端兜底「系统错误」对空态/创建失败不够友好，改为业务文案
     if (!msg || msg === '系统错误') return fallback
     return msg
+  }
+
+  function applySessionDetail(detail: Awaited<ReturnType<typeof getSession>>) {
+    const scope = (detail.session.scope?.split(',')[0] || 'hr') as KnowledgeScopeId
+    if (knowledgeScopes.some((s) => s.id === scope)) setSelectedScope(scope)
+
+    setStreamPhase(null)
+    setRatingOpen(false)
+    setFeedbackOpen(false)
+    getTypewriter().reset()
+
+    const msgs = detail.messages || []
+    const lastUser = [...msgs].reverse().find((m) => m.role === 'user')
+    const lastAi = [...msgs].reverse().find((m) => m.role === 'assistant')
+
+    if (lastUser) {
+      setUserQuestion(lastUser.content || '')
+      setLastUserMessageId(lastUser.id)
+    } else {
+      setUserQuestion(null)
+      setLastUserMessageId(null)
+    }
+
+    if (lastAi) {
+      const cites = (detail.citations || [])
+        .filter((c) => c.messageId === lastAi.id)
+        .map((c, idx) => ({
+          index: c.citeIndex || idx + 1,
+          docId: String(c.docId),
+          title: c.title,
+          page: c.pageNo,
+          knowledgeBase: c.libraryName || '',
+          knowledgeBaseId: c.libraryCode || '',
+          excerpt: c.excerpt,
+        }))
+      setCitations(cites)
+      const thinking =
+        (lastAi.thinkingContent && lastAi.thinkingContent.trim()) ||
+        rebuildThinkingFromCitations(cites)
+      getTypewriter().snap(thinking, lastAi.content || '')
+      setThinkOpen(Boolean(thinking))
+      setRecognizeOpen(true)
+      setAssistantMessageId(lastAi.id)
+      setDoneInfo({
+        messageId: lastAi.id,
+        elapsedMs: lastAi.elapsedMs || 0,
+        status: lastAi.answerStatus || 'OK',
+      })
+    } else {
+      setAnswerText('')
+      setThinkingText('')
+      setAssistantMessageId(null)
+      setDoneInfo(null)
+      setCitations([])
+    }
+  }
+
+  async function loadSessionDetail(id: number) {
+    const detail = await getSession(id)
+    applySessionDetail(detail)
+    return detail
   }
 
   async function refreshSessions(preferId?: number | null, keyword?: string) {
@@ -156,37 +241,7 @@ function ChatPage({
           setSessions(list)
           setSessionId(initialSessionId)
           try {
-            const detail = await getSession(initialSessionId)
-            const scope = (detail.session.scope?.split(',')[0] || 'hr') as KnowledgeScopeId
-            if (knowledgeScopes.some((s) => s.id === scope)) setSelectedScope(scope)
-            const msgs = detail.messages || []
-            const lastUser = [...msgs].reverse().find((m) => m.role === 'user')
-            const lastAi = [...msgs].reverse().find((m) => m.role === 'assistant')
-            if (lastUser) {
-              setUserQuestion(lastUser.content || '')
-              setLastUserMessageId(lastUser.id)
-            }
-            if (lastAi) {
-              setAnswerText(lastAi.content || '')
-              setAssistantMessageId(lastAi.id)
-              setDoneInfo({
-                messageId: lastAi.id,
-                elapsedMs: lastAi.elapsedMs || 0,
-                status: lastAi.answerStatus || 'OK',
-              })
-              const cites = (detail.citations || [])
-                .filter((c) => c.messageId === lastAi.id)
-                .map((c, idx) => ({
-                  index: c.citeIndex || idx + 1,
-                  docId: String(c.docId),
-                  title: c.title,
-                  page: c.pageNo,
-                  knowledgeBase: c.libraryName || '',
-                  knowledgeBaseId: c.libraryCode || '',
-                  excerpt: c.excerpt,
-                }))
-              setCitations(cites)
-            }
+            await loadSessionDetail(initialSessionId)
           } catch {
             // 详情失败仍保留会话列表
           }
@@ -263,55 +318,59 @@ function ChatPage({
     setIsSending(true)
     setLastActionHint(null)
     setUserQuestion(q)
-    setAnswerText('')
     setCitations([])
     setDoneInfo(null)
     setStreamPhase({ status: 'SEARCHING', phase: 'search', message: '正在理解问题并检索知识库…' })
-    setThinkingText('')
     setThinkOpen(true)
     setRecognizeOpen(true)
     setLastUserMessageId(null)
     setAssistantMessageId(null)
     setRatingOpen(false)
 
-    let answer = ''
-    let thinking = ''
+    const tw = getTypewriter()
+    tw.reset()
     const cites: StreamCitation[] = []
+    const hold: { done: StreamDone | null; error: string | null } = { done: null, error: null }
 
     await askStream(sid, q, {
       onMeta: (meta) => {
         if (meta.messageId) setLastUserMessageId(Number(meta.messageId))
         setStreamPhase(meta)
-        if (meta.phase === 'answer' || meta.status === 'GENERATING') {
-          setThinkOpen(false)
-        }
       },
       onCitation: (c) => {
         cites.push(c)
         setCitations([...cites])
       },
       onThinking: (t) => {
-        thinking += t.content || ''
-        setThinkingText(thinking)
+        tw.pushThinking(t.content || '')
       },
       onDelta: (d) => {
-        answer += d.content || ''
-        setAnswerText(answer)
+        tw.pushAnswer(d.content || '')
       },
       onDone: (done) => {
-        setDoneInfo(done)
+        hold.done = done
         setStreamPhase(null)
-        if (done.messageId != null) setAssistantMessageId(Number(done.messageId))
-        setLastActionHint(
-          done.status === 'NO_ANSWER' ? '未找到相关知识' : `回答完成 · ${done.elapsedMs ?? 0}ms`,
-        )
       },
       onError: (err) => {
-        setLastActionHint(err.message || '问答失败')
-        setDoneInfo({ elapsedMs: 0, status: 'ERROR' })
+        hold.error = err.message || '问答失败'
         setStreamPhase(null)
       },
     })
+
+    await tw.finish()
+
+    if (hold.error) {
+      setLastActionHint(hold.error)
+      setDoneInfo({ elapsedMs: 0, status: 'ERROR' })
+    } else if (hold.done) {
+      setDoneInfo(hold.done)
+      if (hold.done.messageId != null) setAssistantMessageId(Number(hold.done.messageId))
+      setLastActionHint(
+        hold.done.status === 'NO_ANSWER'
+          ? '未找到相关知识'
+          : `回答完成 · ${hold.done.elapsedMs ?? 0}ms`,
+      )
+    }
 
     setIsSending(false)
     try {
@@ -338,6 +397,7 @@ function ChatPage({
   async function onNewChat() {
     try {
       const created = await createSession(selectedScope === 'all' ? undefined : selectedScope)
+      getTypewriter().reset()
       setUserQuestion(null)
       setAnswerText('')
       setCitations([])
@@ -359,13 +419,21 @@ function ChatPage({
   }
 
   async function onSelectSession(id: number) {
-    setSessionId(id)
-    const s = sessions.find((x) => x.id === id)
-    if (s) {
-      const scope = (s.scope?.split(',')[0] || 'hr') as KnowledgeScopeId
-      if (knowledgeScopes.some((x) => x.id === scope)) setSelectedScope(scope)
+    if (id === sessionId && (userQuestion || answerText)) {
+      setLastActionHint('已在当前会话')
+      return
     }
-    setLastActionHint(`已切换会话`)
+    if (isSending) {
+      setLastActionHint('请等待当前回答完成后再切换')
+      return
+    }
+    setSessionId(id)
+    try {
+      await loadSessionDetail(id)
+      setLastActionHint('已切换会话')
+    } catch (err) {
+      setLastActionHint(friendlyError(err, '加载会话失败，请稍后重试'))
+    }
   }
 
   async function onChangeScope(scope: KnowledgeScopeId) {
@@ -388,6 +456,7 @@ function ChatPage({
     }
     try {
       await clearSession(sessionId)
+      getTypewriter().reset()
       setUserQuestion(null)
       setAnswerText('')
       setCitations([])
@@ -429,49 +498,53 @@ function ChatPage({
   async function onRegenerate() {
     if (!lastUserMessageId || isSending) return
     setIsSending(true)
-    setAnswerText('')
     setCitations([])
     setDoneInfo(null)
     setStreamPhase({ status: 'SEARCHING', phase: 'search', message: '正在重新检索并生成回答…' })
-    setThinkingText('')
     setThinkOpen(true)
     setRecognizeOpen(true)
     setAssistantMessageId(null)
     setRatingOpen(false)
-    let answer = ''
-    let thinking = ''
+
+    const tw = getTypewriter()
+    tw.reset()
     const cites: StreamCitation[] = []
+    const hold: { done: StreamDone | null; error: string | null } = { done: null, error: null }
+
     await regenerateStream(lastUserMessageId, {
       onMeta: (meta) => {
         if (meta.messageId) setLastUserMessageId(Number(meta.messageId))
         setStreamPhase(meta)
-        if (meta.phase === 'answer' || meta.status === 'GENERATING') {
-          setThinkOpen(false)
-        }
       },
       onCitation: (c) => {
         cites.push(c)
         setCitations([...cites])
       },
       onThinking: (t) => {
-        thinking += t.content || ''
-        setThinkingText(thinking)
+        tw.pushThinking(t.content || '')
       },
       onDelta: (d) => {
-        answer += d.content || ''
-        setAnswerText(answer)
+        tw.pushAnswer(d.content || '')
       },
       onDone: (done) => {
-        setDoneInfo(done)
+        hold.done = done
         setStreamPhase(null)
-        if (done.messageId != null) setAssistantMessageId(Number(done.messageId))
-        setLastActionHint(`已重新回答 · ${done.elapsedMs ?? 0}ms`)
       },
       onError: (err) => {
-        setLastActionHint(err.message || '重新回答失败')
+        hold.error = err.message || '重新回答失败'
         setStreamPhase(null)
       },
     })
+
+    await tw.finish()
+
+    if (hold.error) {
+      setLastActionHint(hold.error)
+    } else if (hold.done) {
+      setDoneInfo(hold.done)
+      if (hold.done.messageId != null) setAssistantMessageId(Number(hold.done.messageId))
+      setLastActionHint(`已重新回答 · ${hold.done.elapsedMs ?? 0}ms`)
+    }
     setIsSending(false)
   }
 
@@ -748,6 +821,9 @@ function ChatPage({
                               {thinkOpen ? (
                                 <div className="qaProcessBody qaThinkBody">
                                   {thinkingText || streamPhase?.message || '正在分析检索片段…'}
+                                  {isSending && !answerText ? (
+                                    <span className="qaStreamCaret" aria-hidden="true" />
+                                  ) : null}
                                 </div>
                               ) : null}
                             </section>

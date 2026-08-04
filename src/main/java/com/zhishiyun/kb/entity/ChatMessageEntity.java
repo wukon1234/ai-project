@@ -15,6 +15,8 @@ public class ChatMessageEntity {
     private Long sessionId;
     private String role;
     private String content;
+    /** 识别/思考过程，供历史会话回显 */
+    private String thinkingContent;
     private Integer elapsedMs;
     private String answerStatus;
     private String modelName;

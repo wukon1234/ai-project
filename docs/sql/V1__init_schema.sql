@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS `chat_message` (
   `session_id` BIGINT NOT NULL,
   `role` VARCHAR(16) NOT NULL COMMENT 'user/assistant/system',
   `content` MEDIUMTEXT NOT NULL,
+  `thinking_content` MEDIUMTEXT NULL COMMENT '识别/思考过程',
   `elapsed_ms` INT DEFAULT NULL,
   `answer_status` VARCHAR(16) DEFAULT NULL COMMENT 'OK/NO_ANSWER/ERROR',
   `model_name` VARCHAR(64) DEFAULT NULL,

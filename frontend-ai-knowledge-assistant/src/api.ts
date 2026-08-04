@@ -50,6 +50,8 @@ export type ChatMessage = {
   sessionId: number
   role: 'user' | 'assistant' | string
   content?: string
+  /** 识别/思考过程，历史回显用 */
+  thinkingContent?: string
   answerStatus?: string
   elapsedMs?: number
   createdAt?: string
