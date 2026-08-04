@@ -67,8 +67,8 @@ public class ChatStreamService {
     }
 
     /**
-     * 问答主流程：落用户消息 → 检索 → 推送 citation/delta → 落助手消息与引用。
-     * SSE 事件：meta / citation / delta / done / error。
+     * 问答主流程：落用户消息 → 检索 → 推送 citation/thinking/delta → 落助手消息与引用。
+     * SSE 事件：meta / citation / thinking / delta / done / error。
      */
     @Transactional
     protected void process(SseEmitter emitter, Long userId, Long sessionId, String question) {
@@ -95,6 +95,8 @@ public class ChatStreamService {
             send(emitter, "meta", mapOf(
                     "messageId", String.valueOf(userMsg.getId()),
                     "status", "SEARCHING",
+                    "phase", "search",
+                    "message", "正在理解问题并检索知识库…",
                     "traceId", traceId == null ? "" : traceId));
             // scope ∩ ACL 后检索；低于阈值则走 NO_ANSWER
             Set<String> scopes = libraryAccessService.resolveScopes(userId, session.getScope());
@@ -108,6 +110,13 @@ public class ChatStreamService {
                 noAnswer(emitter, userId, sessionId, start);
                 return;
             }
+
+            send(emitter, "meta", mapOf(
+                    "status", "RECOGNIZING",
+                    "phase", "recognize",
+                    "message", "已识别 " + selected.size() + " 个相关片段",
+                    "hitCount", selected.size()));
+
             List<ChatCitationEntity> citations = new ArrayList<ChatCitationEntity>();
             int idx = 1;
             for (SearchHit hit : selected) {
@@ -115,28 +124,55 @@ public class ChatStreamService {
                 KbDocumentEntity doc = kbDocumentMapper.selectById(chunk.getDocId());
                 KbLibraryEntity library = kbLibraryMapper.selectOne(new LambdaQueryWrapper<KbLibraryEntity>()
                         .eq(KbLibraryEntity::getCode, chunk.getLibraryCode()).last("limit 1"));
+                String title = doc == null ? "未知文档" : doc.getTitle();
+                Integer page = chunk.getPageNo();
                 send(emitter, "citation", mapOf(
                         "index", idx,
                         "docId", String.valueOf(chunk.getDocId()),
-                        "title", doc == null ? "未知文档" : doc.getTitle(),
-                        "page", chunk.getPageNo(),
+                        "title", title,
+                        "page", page,
                         "knowledgeBase", library == null ? chunk.getLibraryCode() : library.getName(),
                         "knowledgeBaseId", chunk.getLibraryCode(),
                         "excerpt", excerpt(chunk.getContent())));
+                send(emitter, "thinking", mapOf(
+                        "content", "识别来源 [" + idx + "] 《" + title + "》第 " + page + " 页\n"));
                 ChatCitationEntity cite = new ChatCitationEntity();
                 cite.setCiteIndex(idx++);
                 cite.setDocId(chunk.getDocId());
-                cite.setTitle(doc == null ? "未知文档" : doc.getTitle());
-                cite.setPageNo(chunk.getPageNo());
+                cite.setTitle(title);
+                cite.setPageNo(page);
                 cite.setLibraryName(library == null ? chunk.getLibraryCode() : library.getName());
                 cite.setLibraryCode(chunk.getLibraryCode());
                 cite.setExcerpt(excerpt(chunk.getContent()));
                 citations.add(cite);
             }
-            String answer = buildAnswer(question, selected);
-            for (String part : splitForStreaming(answer)) {
-                send(emitter, "delta", mapOf("content", part));
-            }
+
+            send(emitter, "meta", mapOf(
+                    "status", "THINKING",
+                    "phase", "think",
+                    "message", "正在分析检索片段并组织回答…"));
+            send(emitter, "thinking", mapOf(
+                    "content", "结合上述片段核对关键事实，按类别整理要点，并在句末标注引用编号。\n"));
+
+            StringBuilder answerBuf = new StringBuilder();
+            boolean[] generating = {false};
+            streamAnswer(question, selected, (type, content) -> {
+                if ("thinking".equals(type)) {
+                    send(emitter, "thinking", mapOf("content", content));
+                    return;
+                }
+                if (!generating[0]) {
+                    generating[0] = true;
+                    send(emitter, "meta", mapOf(
+                            "status", "GENERATING",
+                            "phase", "answer",
+                            "message", "正在生成回答…"));
+                }
+                answerBuf.append(content);
+                send(emitter, "delta", mapOf("content", content));
+            });
+
+            String answer = answerBuf.toString();
             ChatMessageEntity aiMsg = new ChatMessageEntity();
             aiMsg.setSessionId(sessionId);
             aiMsg.setRole(MessageRole.assistant.name());
@@ -197,8 +233,8 @@ public class ChatStreamService {
         emitter.complete();
     }
 
-    /** 基于检索片段调用 LLM 生成可溯源回答。 */
-    private String buildAnswer(String question, List<SearchHit> hits) {
+    /** 基于检索片段流式调用 LLM 生成可溯源回答。 */
+    private void streamAnswer(String question, List<SearchHit> hits, LlmClient.StreamSink sink) throws Exception {
         StringBuilder context = new StringBuilder();
         int idx = 1;
         for (SearchHit hit : hits) {
@@ -206,12 +242,13 @@ public class ChatStreamService {
                     .append(contextSnippet(hit.getChunk().getContent()))
                     .append("\n");
         }
-        String system = "你是企业知识库助手。请仅依据给定检索片段回答用户问题，"
-                + "必要时用 [n] 标注引用来源。不要编造片段中不存在的事实；"
-                + "若片段不足以回答，请明确说明。";
+        String system = "你是企业知识库助手。请仅依据给定检索片段回答用户问题。"
+                + "输出要求：使用清晰层级与要点列表；关键事实句末用 [n] 标注引用来源；"
+                + "不要编造片段中不存在的事实；若片段不足以回答，请明确说明。"
+                + "不要输出与问题无关的开场白。";
         String user = "用户问题：\n" + (question == null ? "" : question)
                 + "\n\n检索片段：\n" + context;
-        return llmClient.chat(system, user);
+        llmClient.chatStream(system, user, sink);
     }
 
     private String contextSnippet(String text) {
@@ -220,15 +257,6 @@ public class ChatStreamService {
         }
         String t = text.trim();
         return t.length() > 800 ? t.substring(0, 800) : t;
-    }
-
-    private List<String> splitForStreaming(String text) {
-        List<String> list = new ArrayList<String>();
-        int step = 20;
-        for (int i = 0; i < text.length(); i += step) {
-            list.add(text.substring(i, Math.min(text.length(), i + step)));
-        }
-        return list;
     }
 
     private String excerpt(String text) {

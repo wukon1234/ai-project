@@ -12,7 +12,6 @@ import com.zhishiyun.kb.mapper.KbLibraryMapper;
 import com.zhishiyun.kb.mapper.UsageEventMapper;
 import com.zhishiyun.kb.service.VectorSearchService.SearchHit;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,13 +47,18 @@ public class DocumentAskStreamService {
         return emitter;
     }
 
-    /** 校验文档权限后仅在该 doc 内检索，推送 citation/delta/done。 */
+    /** 校验文档权限后仅在该 doc 内检索，推送 citation/thinking/delta/done。 */
     private void process(SseEmitter emitter, Long userId, Long docId, String question) {
         long start = System.currentTimeMillis();
         try {
             KbDocumentEntity doc = documentService.getPermittedDocument(userId, docId);
             String messageId = "doc-ask-" + docId + "-" + start;
-            send(emitter, "meta", mapOf("messageId", messageId, "status", "SEARCHING", "docId", String.valueOf(docId)));
+            send(emitter, "meta", mapOf(
+                    "messageId", messageId,
+                    "status", "SEARCHING",
+                    "phase", "search",
+                    "message", "正在本文档内检索相关片段…",
+                    "docId", String.valueOf(docId)));
 
             List<SearchHit> hits = vectorSearchService.searchInDoc(question, docId, 20);
             List<SearchHit> selected = hits.stream()
@@ -74,25 +78,53 @@ public class DocumentAskStreamService {
                 return;
             }
 
+            send(emitter, "meta", mapOf(
+                    "status", "RECOGNIZING",
+                    "phase", "recognize",
+                    "message", "已识别 " + selected.size() + " 个相关片段",
+                    "hitCount", selected.size()));
+
             KbLibraryEntity library = kbLibraryMapper.selectOne(new LambdaQueryWrapper<KbLibraryEntity>()
                     .eq(KbLibraryEntity::getCode, doc.getLibraryCode()).last("limit 1"));
             int idx = 1;
             for (SearchHit hit : selected) {
                 KbChunkEntity chunk = hit.getChunk();
                 send(emitter, "citation", mapOf(
-                        "index", idx++,
+                        "index", idx,
                         "docId", String.valueOf(docId),
                         "title", doc.getTitle(),
                         "page", chunk.getPageNo(),
                         "knowledgeBase", library == null ? doc.getLibraryCode() : library.getName(),
                         "knowledgeBaseId", doc.getLibraryCode(),
                         "excerpt", excerpt(chunk.getContent())));
+                send(emitter, "thinking", mapOf(
+                        "content", "识别来源 [" + idx + "] 《" + doc.getTitle() + "》第 " + chunk.getPageNo() + " 页\n"));
+                idx++;
             }
 
-            String answer = buildAnswer(question, selected);
-            for (String part : splitForStreaming(answer)) {
-                send(emitter, "delta", mapOf("content", part));
-            }
+            send(emitter, "meta", mapOf(
+                    "status", "THINKING",
+                    "phase", "think",
+                    "message", "正在分析文档片段并组织回答…"));
+            send(emitter, "thinking", mapOf(
+                    "content", "结合本文档片段核对关键事实，整理要点并标注引用。\n"));
+
+            boolean[] generating = {false};
+            streamAnswer(question, selected, (type, content) -> {
+                if ("thinking".equals(type)) {
+                    send(emitter, "thinking", mapOf("content", content));
+                    return;
+                }
+                if (!generating[0]) {
+                    generating[0] = true;
+                    send(emitter, "meta", mapOf(
+                            "status", "GENERATING",
+                            "phase", "answer",
+                            "message", "正在生成回答…"));
+                }
+                send(emitter, "delta", mapOf("content", content));
+            });
+
             send(emitter, "done", mapOf(
                     "elapsedMs", System.currentTimeMillis() - start,
                     "status", "OK",
@@ -133,8 +165,7 @@ public class DocumentAskStreamService {
         usageEventMapper.insert(usage);
     }
 
-    /** 基于本文档检索片段调用 LLM 生成回答。 */
-    private String buildAnswer(String question, List<SearchHit> hits) {
+    private void streamAnswer(String question, List<SearchHit> hits, LlmClient.StreamSink sink) throws Exception {
         StringBuilder context = new StringBuilder();
         int idx = 1;
         for (SearchHit hit : hits) {
@@ -142,11 +173,12 @@ public class DocumentAskStreamService {
                     .append(contextSnippet(hit.getChunk().getContent()))
                     .append("\n");
         }
-        String system = "你是企业文档助手。请仅依据给定文档片段回答，必要时用 [n] 标注来源；"
+        String system = "你是企业文档助手。请仅依据给定文档片段回答。"
+                + "输出要求：使用清晰层级与要点列表；必要时用 [n] 标注来源；"
                 + "不要编造片段外信息；不足时请明确说明。";
         String user = "用户问题：\n" + (question == null ? "" : question)
                 + "\n\n文档片段：\n" + context;
-        return llmClient.chat(system, user);
+        llmClient.chatStream(system, user, sink);
     }
 
     private String contextSnippet(String text) {
@@ -155,15 +187,6 @@ public class DocumentAskStreamService {
         }
         String t = text.trim();
         return t.length() > 800 ? t.substring(0, 800) : t;
-    }
-
-    private List<String> splitForStreaming(String text) {
-        List<String> list = new ArrayList<String>();
-        int step = 20;
-        for (int i = 0; i < text.length(); i += step) {
-            list.add(text.substring(i, Math.min(text.length(), i + step)));
-        }
-        return list;
     }
 
     private String excerpt(String text) {

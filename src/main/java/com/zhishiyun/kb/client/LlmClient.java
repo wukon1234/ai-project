@@ -7,6 +7,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.zhishiyun.kb.admin.service.AdminModelService;
 import com.zhishiyun.kb.common.BizException;
 import com.zhishiyun.kb.common.ErrorCode;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +19,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -34,10 +38,33 @@ public class LlmClient {
     private final ObjectMapper objectMapper;
     private final AdminModelService adminModelService;
 
+    /** 流式回调：区分思考内容与正式回答增量。 */
+    @FunctionalInterface
+    public interface StreamSink {
+        void onChunk(String type, String content) throws Exception;
+    }
+
     /**
      * 基于 system/user 消息生成回答；失败抛业务异常供 SSE 转为 error 事件。
      */
     public String chat(String systemPrompt, String userPrompt) {
+        StringBuilder sb = new StringBuilder();
+        chatStream(systemPrompt, userPrompt, (type, content) -> {
+            if ("answer".equals(type) && content != null) {
+                sb.append(content);
+            }
+        });
+        String content = sb.toString().trim();
+        if (!StringUtils.hasText(content)) {
+            throw new BizException(ErrorCode.SYSTEM_ERROR, "LLM 返回空内容");
+        }
+        return content;
+    }
+
+    /**
+     * SSE 流式调用：边收边回调。type=thinking 为推理过程，type=answer 为正式回答。
+     */
+    public void chatStream(String systemPrompt, String userPrompt, StreamSink sink) {
         Map<String, Object> llm = llmConfig();
         String baseUrl = str(llm.get("baseUrl"));
         String model = str(llm.get("modelName"));
@@ -55,8 +82,9 @@ public class LlmClient {
         Exception last = null;
         for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
             try {
-                return chatOnce(baseUrl, model, apiKey, timeoutSec, temperature, maxTokens,
-                        systemPrompt, userPrompt, attempt);
+                chatStreamOnce(baseUrl, model, apiKey, timeoutSec, temperature, maxTokens,
+                        systemPrompt, userPrompt, attempt, sink);
+                return;
             } catch (BizException e) {
                 last = e;
                 if (!isRetryable(e) || attempt >= MAX_RETRY) {
@@ -71,7 +99,7 @@ public class LlmClient {
                 sleepBackoff(attempt);
             }
         }
-        log.error("llm chat failed after retries", last);
+        log.error("llm chat stream failed after retries", last);
         if (last instanceof BizException) {
             throw (BizException) last;
         }
@@ -79,7 +107,7 @@ public class LlmClient {
                 last == null || last.getMessage() == null ? "LLM 调用异常" : last.getMessage());
     }
 
-    private String chatOnce(
+    private void chatStreamOnce(
             String baseUrl,
             String model,
             String apiKey,
@@ -88,11 +116,13 @@ public class LlmClient {
             int maxTokens,
             String systemPrompt,
             String userPrompt,
-            int attempt) throws Exception {
+            int attempt,
+            StreamSink sink) throws Exception {
         ObjectNode body = objectMapper.createObjectNode();
         body.put("model", model);
         body.put("temperature", temperature);
         body.put("max_tokens", maxTokens);
+        body.put("stream", true);
         ArrayNode messages = body.putArray("messages");
         if (StringUtils.hasText(systemPrompt)) {
             ObjectNode sys = messages.addObject();
@@ -112,11 +142,12 @@ public class LlmClient {
                 .url(trimSlash(baseUrl) + "/chat/completions")
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
                 .post(RequestBody.create(objectMapper.writeValueAsString(body), JSON))
                 .build();
         try (Response response = client.newCall(request).execute()) {
-            String respBody = response.body() == null ? "" : response.body().string();
             if (!response.isSuccessful()) {
+                String respBody = response.body() == null ? "" : response.body().string();
                 log.warn("llm api failed attempt={} status={} body={}",
                         attempt, response.code(), abbreviate(respBody));
                 String providerMsg = extractErrorMessage(respBody);
@@ -128,13 +159,54 @@ public class LlmClient {
                 }
                 throw new BizException(ErrorCode.SYSTEM_ERROR, tip, response.code());
             }
-            JsonNode root = objectMapper.readTree(respBody);
-            String content = root.path("choices").path(0).path("message").path("content").asText("");
-            if (!StringUtils.hasText(content)) {
+            ResponseBody respBody = response.body();
+            if (respBody == null) {
+                throw new BizException(ErrorCode.SYSTEM_ERROR, "LLM 返回空响应");
+            }
+            boolean anyAnswer = false;
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(respBody.byteStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.isEmpty()) {
+                        continue;
+                    }
+                    if (!line.startsWith("data:")) {
+                        continue;
+                    }
+                    String data = line.substring(5).trim();
+                    if ("[DONE]".equals(data)) {
+                        break;
+                    }
+                    JsonNode root = objectMapper.readTree(data);
+                    JsonNode delta = root.path("choices").path(0).path("delta");
+                    String reasoning = firstNonBlank(
+                            delta.path("reasoning_content").asText(null),
+                            delta.path("reasoning").asText(null));
+                    if (StringUtils.hasText(reasoning)) {
+                        sink.onChunk("thinking", reasoning);
+                    }
+                    String content = delta.path("content").asText(null);
+                    if (StringUtils.hasText(content)) {
+                        anyAnswer = true;
+                        sink.onChunk("answer", content);
+                    }
+                }
+            }
+            if (!anyAnswer) {
                 throw new BizException(ErrorCode.SYSTEM_ERROR, "LLM 返回空内容");
             }
-            return content.trim();
         }
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        if (StringUtils.hasText(a)) {
+            return a;
+        }
+        if (StringUtils.hasText(b)) {
+            return b;
+        }
+        return null;
     }
 
     private static boolean isRetryable(BizException e) {

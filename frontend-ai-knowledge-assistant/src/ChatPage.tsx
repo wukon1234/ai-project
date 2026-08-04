@@ -2,12 +2,15 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   BookOpenText,
   Bookmark,
+  Brain,
   Check,
   ChevronDown,
+  ChevronRight,
   Copy,
   History,
   Library,
   MessageSquarePlus,
+  ScanSearch,
   Search,
   Send,
   Settings,
@@ -19,6 +22,7 @@ import {
   Trash2,
   UserCircle2,
 } from 'lucide-react'
+import AnswerContent from './AnswerContent'
 import FeedbackModal from './FeedbackModal'
 import type { SourceDoc } from './DocumentReader'
 import {
@@ -37,6 +41,7 @@ import {
   type ChatSession,
   type StreamCitation,
   type StreamDone,
+  type StreamMeta,
 } from './api'
 
 type KnowledgeScopeId = 'all' | 'product' | 'hr' | 'tech' | 'support'
@@ -85,6 +90,10 @@ function ChatPage({
   const [answerText, setAnswerText] = useState('')
   const [citations, setCitations] = useState<StreamCitation[]>([])
   const [doneInfo, setDoneInfo] = useState<StreamDone | null>(null)
+  const [streamPhase, setStreamPhase] = useState<StreamMeta | null>(null)
+  const [thinkingText, setThinkingText] = useState('')
+  const [thinkOpen, setThinkOpen] = useState(true)
+  const [recognizeOpen, setRecognizeOpen] = useState(true)
   const [lastUserMessageId, setLastUserMessageId] = useState<number | null>(null)
   const [assistantMessageId, setAssistantMessageId] = useState<number | null>(null)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
@@ -257,20 +266,33 @@ function ChatPage({
     setAnswerText('')
     setCitations([])
     setDoneInfo(null)
+    setStreamPhase({ status: 'SEARCHING', phase: 'search', message: '正在理解问题并检索知识库…' })
+    setThinkingText('')
+    setThinkOpen(true)
+    setRecognizeOpen(true)
     setLastUserMessageId(null)
     setAssistantMessageId(null)
     setRatingOpen(false)
 
     let answer = ''
+    let thinking = ''
     const cites: StreamCitation[] = []
 
     await askStream(sid, q, {
       onMeta: (meta) => {
         if (meta.messageId) setLastUserMessageId(Number(meta.messageId))
+        setStreamPhase(meta)
+        if (meta.phase === 'answer' || meta.status === 'GENERATING') {
+          setThinkOpen(false)
+        }
       },
       onCitation: (c) => {
         cites.push(c)
         setCitations([...cites])
+      },
+      onThinking: (t) => {
+        thinking += t.content || ''
+        setThinkingText(thinking)
       },
       onDelta: (d) => {
         answer += d.content || ''
@@ -278,6 +300,7 @@ function ChatPage({
       },
       onDone: (done) => {
         setDoneInfo(done)
+        setStreamPhase(null)
         if (done.messageId != null) setAssistantMessageId(Number(done.messageId))
         setLastActionHint(
           done.status === 'NO_ANSWER' ? '未找到相关知识' : `回答完成 · ${done.elapsedMs ?? 0}ms`,
@@ -286,6 +309,7 @@ function ChatPage({
       onError: (err) => {
         setLastActionHint(err.message || '问答失败')
         setDoneInfo({ elapsedMs: 0, status: 'ERROR' })
+        setStreamPhase(null)
       },
     })
 
@@ -318,6 +342,8 @@ function ChatPage({
       setAnswerText('')
       setCitations([])
       setDoneInfo(null)
+      setStreamPhase(null)
+      setThinkingText('')
       setAssistantMessageId(null)
       setLastUserMessageId(null)
       setSessionQuery('')
@@ -366,6 +392,8 @@ function ChatPage({
       setAnswerText('')
       setCitations([])
       setDoneInfo(null)
+      setStreamPhase(null)
+      setThinkingText('')
       setAssistantMessageId(null)
       setLastUserMessageId(null)
       await refreshSessions(sessionId)
@@ -404,17 +432,30 @@ function ChatPage({
     setAnswerText('')
     setCitations([])
     setDoneInfo(null)
+    setStreamPhase({ status: 'SEARCHING', phase: 'search', message: '正在重新检索并生成回答…' })
+    setThinkingText('')
+    setThinkOpen(true)
+    setRecognizeOpen(true)
     setAssistantMessageId(null)
     setRatingOpen(false)
     let answer = ''
+    let thinking = ''
     const cites: StreamCitation[] = []
     await regenerateStream(lastUserMessageId, {
       onMeta: (meta) => {
         if (meta.messageId) setLastUserMessageId(Number(meta.messageId))
+        setStreamPhase(meta)
+        if (meta.phase === 'answer' || meta.status === 'GENERATING') {
+          setThinkOpen(false)
+        }
       },
       onCitation: (c) => {
         cites.push(c)
         setCitations([...cites])
+      },
+      onThinking: (t) => {
+        thinking += t.content || ''
+        setThinkingText(thinking)
       },
       onDelta: (d) => {
         answer += d.content || ''
@@ -422,12 +463,26 @@ function ChatPage({
       },
       onDone: (done) => {
         setDoneInfo(done)
+        setStreamPhase(null)
         if (done.messageId != null) setAssistantMessageId(Number(done.messageId))
         setLastActionHint(`已重新回答 · ${done.elapsedMs ?? 0}ms`)
       },
-      onError: (err) => setLastActionHint(err.message || '重新回答失败'),
+      onError: (err) => {
+        setLastActionHint(err.message || '重新回答失败')
+        setStreamPhase(null)
+      },
     })
     setIsSending(false)
+  }
+
+  function openCitation(source: StreamCitation) {
+    onOpenSource({
+      id: String(source.docId),
+      title: source.title,
+      page: source.page,
+      knowledgeBase: source.knowledgeBase,
+      excerpt: source.excerpt,
+    })
   }
 
   async function onHelpful() {
@@ -624,15 +679,100 @@ function ChatPage({
                       <span className="qaAiOrb" />
                     </div>
                     <div className="qaAnswerColumn">
-                      <div className="qaBubble qaBubbleAi">
-                        <div className="qaAnswerText" style={{ whiteSpace: 'pre-wrap' }}>
-                          {answerText || (isSending ? '正在检索…' : '')}
+                      {(isSending || thinkingText || citations.length > 0) && (isSending || thinkingText) ? (
+                        <div className="qaProcessStack">
+                          <section className="qaProcessPanel">
+                            <button
+                              type="button"
+                              className="qaProcessToggle"
+                              onClick={() => setRecognizeOpen((v) => !v)}
+                              aria-expanded={recognizeOpen}
+                            >
+                              {recognizeOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              <ScanSearch size={16} />
+                              <span className="qaProcessLabel">
+                                {streamPhase?.phase === 'search' || streamPhase?.status === 'SEARCHING'
+                                  ? streamPhase?.message || '正在检索知识库…'
+                                  : citations.length
+                                    ? `已识别 ${citations.length} 个相关来源`
+                                    : streamPhase?.message || '识别过程'}
+                              </span>
+                              {isSending && (!citations.length || streamPhase?.phase === 'search') ? (
+                                <span className="qaProcessPulse" />
+                              ) : null}
+                            </button>
+                            {recognizeOpen ? (
+                              <div className="qaProcessBody">
+                                {citations.length ? (
+                                  <ul className="qaRecognizeList">
+                                    {citations.map((c) => (
+                                      <li key={`${c.docId}-${c.index}`}>
+                                        <button type="button" className="qaRecognizeLink" onClick={() => openCitation(c)}>
+                                          <span className="qaRecognizeIndex">[{c.index}]</span>
+                                          <span>
+                                            {c.title} · 第 {c.page} 页
+                                          </span>
+                                          <span className="qaRecognizeKb">{c.knowledgeBase}</span>
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <div className="qaProcessHint">
+                                    {streamPhase?.message || '正在理解问题并检索知识库…'}
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+                          </section>
+
+                          {(thinkingText || isSending) && (
+                            <section className="qaProcessPanel qaThinkPanel">
+                              <button
+                                type="button"
+                                className="qaProcessToggle"
+                                onClick={() => setThinkOpen((v) => !v)}
+                                aria-expanded={thinkOpen}
+                              >
+                                {thinkOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                <Brain size={16} />
+                                <span className="qaProcessLabel">
+                                  {isSending && !answerText
+                                    ? streamPhase?.message || '思考中…'
+                                    : doneInfo?.elapsedMs
+                                      ? `已完成思考（${(doneInfo.elapsedMs / 1000).toFixed(1)}s）`
+                                      : '思考过程'}
+                                </span>
+                                {isSending && !answerText ? <span className="qaProcessPulse" /> : null}
+                              </button>
+                              {thinkOpen ? (
+                                <div className="qaProcessBody qaThinkBody">
+                                  {thinkingText || streamPhase?.message || '正在分析检索片段…'}
+                                </div>
+                              ) : null}
+                            </section>
+                          )}
                         </div>
+                      ) : null}
+
+                      <div className="qaBubble qaBubbleAi">
+                        {answerText || !isSending ? (
+                          <AnswerContent
+                            text={answerText}
+                            citations={citations}
+                            streaming={isSending && Boolean(answerText)}
+                            onOpenCitation={openCitation}
+                          />
+                        ) : (
+                          <div className="qaAnswerPending">
+                            {streamPhase?.message || '正在生成回答…'}
+                          </div>
+                        )}
                       </div>
 
-                      {citations.length ? (
+                      {citations.length && !isSending ? (
                         <section className="qaSources">
-                          <div className="qaSourcesTitle">📎 参考来源（{citations.length}）</div>
+                          <div className="qaSourcesTitle">参考来源（{citations.length}）</div>
                           <div className="qaSourceList">
                             {citations.map((source) => (
                               <article key={`${source.docId}-${source.index}`} className="qaSourceCard">
@@ -640,21 +780,13 @@ function ChatPage({
                                   <div className="qaSourceDoc">
                                     <BookOpenText size={16} />
                                     <span>
-                                      {source.title} · 第 {source.page} 页
+                                      [{source.index}] {source.title} · 第 {source.page} 页
                                     </span>
                                   </div>
                                   <button
                                     type="button"
                                     className="qaLinkBtn"
-                                    onClick={() =>
-                                      onOpenSource({
-                                        id: String(source.docId),
-                                        title: source.title,
-                                        page: source.page,
-                                        knowledgeBase: source.knowledgeBase,
-                                        excerpt: source.excerpt,
-                                      })
-                                    }
+                                    onClick={() => openCitation(source)}
                                   >
                                     查看原文 →
                                   </button>

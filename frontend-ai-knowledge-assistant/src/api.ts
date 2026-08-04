@@ -140,9 +140,20 @@ export type DocumentMeta = {
   category?: string
 }
 
+export type StreamMeta = {
+  messageId?: string
+  status?: string
+  phase?: 'search' | 'recognize' | 'think' | 'answer' | string
+  message?: string
+  hitCount?: number
+  traceId?: string
+  docId?: string
+}
+
 export type StreamHandlers = {
-  onMeta?: (data: { messageId?: string; status?: string; traceId?: string }) => void
+  onMeta?: (data: StreamMeta) => void
   onCitation?: (data: StreamCitation) => void
+  onThinking?: (data: { content: string }) => void
   onDelta?: (data: { content: string }) => void
   onDone?: (data: StreamDone) => void
   onError?: (data: { code?: number; message?: string }) => void
@@ -409,6 +420,7 @@ async function consumeSse(path: string, body: unknown | undefined, handlers: Str
     }
     if (name === 'meta') handlers.onMeta?.(payload as never)
     else if (name === 'citation') handlers.onCitation?.(payload as never)
+    else if (name === 'thinking') handlers.onThinking?.(payload as never)
     else if (name === 'delta') handlers.onDelta?.(payload as never)
     else if (name === 'done') handlers.onDone?.(payload as never)
     else if (name === 'error') handlers.onError?.(payload as never)

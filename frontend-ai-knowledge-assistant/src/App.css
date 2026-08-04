@@ -302,6 +302,270 @@
   font-size: 15px;
 }
 
+.qaAnswerPending {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.qaProcessStack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.qaProcessPanel {
+  border: 1px solid var(--divider);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.9);
+  overflow: hidden;
+}
+
+.qaThinkPanel {
+  background: rgba(239, 246, 255, 0.72);
+}
+
+.qaProcessToggle {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 0;
+  background: transparent;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.qaProcessLabel {
+  flex: 1;
+}
+
+.qaProcessPulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2563eb;
+  box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45);
+  animation: qaPulse 1.4s ease-out infinite;
+}
+
+@keyframes qaPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(37, 99, 235, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+  }
+}
+
+.qaProcessBody {
+  padding: 0 14px 12px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #64748b;
+}
+
+.qaThinkBody {
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow: auto;
+  border-top: 1px dashed rgba(148, 163, 184, 0.45);
+  padding-top: 10px;
+  margin-top: 2px;
+}
+
+.qaProcessHint {
+  color: #64748b;
+}
+
+.qaRecognizeList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.qaRecognizeLink {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.75);
+  color: #1e293b;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qaRecognizeLink:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.qaRecognizeIndex {
+  color: #2563eb;
+  font-weight: 800;
+}
+
+.qaRecognizeKb {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.qaRichAnswer {
+  font-size: 15px;
+  color: #1f2937;
+  line-height: 1.75;
+}
+
+.qaRichAnswerStreaming {
+  min-height: 1.5em;
+}
+
+.qaStreamCaret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: #2563eb;
+  animation: qaCaret 0.9s steps(1) infinite;
+}
+
+@keyframes qaCaret {
+  50% {
+    opacity: 0;
+  }
+}
+
+.qaRichHeading {
+  font-weight: 800;
+  color: #0f172a;
+  margin: 14px 0 8px;
+}
+
+.qaRichHeading:first-child {
+  margin-top: 0;
+}
+
+.qaRichHeading-h1 {
+  font-size: 18px;
+}
+
+.qaRichHeading-h2 {
+  font-size: 16px;
+}
+
+.qaRichHeading-h3 {
+  font-size: 15px;
+}
+
+.qaRichParagraph {
+  margin: 0 0 10px;
+}
+
+.qaRichParagraph:last-child {
+  margin-bottom: 0;
+}
+
+.qaRichList {
+  margin: 6px 0 12px;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qaRichList li {
+  position: relative;
+  padding-left: 18px;
+}
+
+.qaRichList li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.65em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2563eb;
+}
+
+.qaRichListOrdered {
+  counter-reset: qa-ol;
+}
+
+.qaRichListOrdered li {
+  padding-left: 28px;
+}
+
+.qaRichListOrdered li::before {
+  content: counter(qa-ol);
+  counter-increment: qa-ol;
+  top: 0.1em;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qaCiteMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 2px;
+  padding: 0 5px;
+  min-width: 22px;
+  height: 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  vertical-align: 2px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.qaCiteMark:hover {
+  background: #2563eb;
+  color: #fff;
+}
+
+.qaCiteMarkMuted {
+  background: #e2e8f0;
+  color: #64748b;
+  cursor: default;
+}
+
 .qaFactList,
 .qaEmptyList {
   margin: 10px 0;
